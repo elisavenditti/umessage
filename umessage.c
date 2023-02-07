@@ -21,8 +21,10 @@
 #include <asm/io.h>
 #include <linux/syscalls.h>
 #include "lib/include/scth.h"
-#include "my_header.h"
-#include "device_driver.c"
+#include "umessage_header.h"
+#include "umessage_device_driver.c"
+#include "umessage_syscalls.c"
+#include "umessage_filesystem/umessagefs_src.c"
 
 
 MODULE_LICENSE("GPL");
@@ -37,87 +39,6 @@ unsigned long the_syscall_table = 0x0;
 module_param(the_syscall_table, ulong, 0660);
 
 
-// DEFINIZIONI UTILI
-
-unsigned long the_ni_syscall;
-unsigned long new_sys_call_array[] = {0x0,0x0,0x0}; //to initialize at startup
-
-#define HACKED_ENTRIES (int)(sizeof(new_sys_call_array)/sizeof(unsigned long))
-int restore[HACKED_ENTRIES] = {[0 ... (HACKED_ENTRIES-1)] -1};
-
-
-
-
-
-// SYSTEM CALLS
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(1, _invalidate_data, int, offset){
-#else
-asmlinkage int sys_invalidate_data(int offset){
-#endif
-       
-	AUDIT
-	printk("%s: invocation of invalidate_data with offset=%d\n",MODNAME, offset);
-	return 0;
-}
-
-
-
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(2, _put_data, char*, source, size_t, size){
-#else
-asmlinkage int sys_put_data(char* source, size_t size){
-#endif
-        
-
-        int ret;
-	char* user_message;		//char user_message[128];
-	user_message = (char*) kmalloc(size+1, GFP_KERNEL);
-	if(user_message == NULL){
-		printk("%s: kmalloc error, null returned\n",MODNAME);
-		return 0;
-	}
-	ret = copy_from_user(user_message, source, size);
-	user_message[size]='\0';
-	
-       
-	AUDIT
-	printk("%s: invocation of put_data with data=%s of size=%ld\n",MODNAME, user_message, size);
-	return 0;
-}
-
-
-
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-__SYSCALL_DEFINEx(3, _get_data, int, offset, char*, destination, size_t, size){
-#else
-asmlinkage int sys_get_data(int offset, char* destination, size_t size){
-#endif
-
-
-	AUDIT
-	printk("%s: invocation of get_data with offset=%d, destination=%px, size=%ld\n",MODNAME, offset, destination, size);
-	return 0;
-}
-
-
-
-
-
-// dopo le macro vengono create due funzioni con nomi differenti da sys_...
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-long sys_invalidate_data = (unsigned long) __x64_sys_invalidate_data;       
-long sys_put_data = (unsigned long) __x64_sys_put_data;
-long sys_get_data = (unsigned long) __x64_sys_get_data;
-#else
-#endif
-
-
-
 
 
 // FUNZIONI DI STARTUP E SHUTDOWN DEL MODULO
@@ -126,6 +47,7 @@ int init_module(void) {
 
         int i;
         int ret;
+        int ret2;
 
 	AUDIT{
 	   printk("%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
@@ -165,6 +87,16 @@ int init_module(void) {
 
 	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
+
+
+        // registrazione del filesystem
+
+        ret2 = register_filesystem(&onefilefs_type);
+        if (likely(ret2 == 0))
+                printk("%s: sucessfully registered umessagefs\n",MODNAME);
+        else
+                printk("%s: failed to register umessagefs - error %d", MODNAME,ret2);
+
         return 0;
 
 }
@@ -172,10 +104,12 @@ int init_module(void) {
 void cleanup_module(void) {
 
         int i;
+        int ret;
                 
         printk("%s: shutting down\n",MODNAME);
 
         // restore della system call table
+
 	unprotect_memory();
         for(i=0;i<HACKED_ENTRIES;i++){
                 ((unsigned long *)the_syscall_table)[restore[i]] = the_ni_syscall;
@@ -184,8 +118,19 @@ void cleanup_module(void) {
         printk("%s: sys-call table restored to its original content\n",MODNAME);
 
         // eliminazione del device driver
+        
         unregister_chrdev(Major, DEVICE_NAME);
 	printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
+
+
+        // eliminazione del filesystem
+        ret = unregister_filesystem(&onefilefs_type);
+
+        if (likely(ret == 0))
+                printk("%s: sucessfully unregistered file system driver\n",MODNAME);
+        else
+                printk("%s: failed to unregister umessagefs driver - error %d", MODNAME, ret);
+
 
 	return;
         
