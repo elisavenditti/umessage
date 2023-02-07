@@ -1,1 +1,0 @@
-cmd_/home/elisa/Scrivania/umessage/umessage_module.o := ld -m elf_x86_64 -z noexecstack   -r -o /home/elisa/Scrivania/umessage/umessage_module.o /home/elisa/Scrivania/umessage/umessage.o /home/elisa/Scrivania/umessage/lib/scth.o /home/elisa/Scrivania/umessage/umessage_filesystem/file.o /home/elisa/Scrivania/umessage/umessage_filesystem/dir.o
