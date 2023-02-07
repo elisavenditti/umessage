@@ -20,7 +20,7 @@
 #include <asm/apic.h>
 #include <asm/io.h>
 #include <linux/syscalls.h>
-#include "umessage_header.h"
+// #include "umessage_header.h"
 
 
 // DEFINIZIONI UTILI

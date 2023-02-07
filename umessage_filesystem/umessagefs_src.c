@@ -8,7 +8,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
-#include "../umessage_header.h"
+// #include "../umessage_header.h"
 #include "umessagefs.h"
 
 
@@ -107,9 +107,9 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
 //file system structure
 static struct file_system_type onefilefs_type = {
 	.owner = THIS_MODULE,
-        .name           = "singlefilefs",
-        .mount          = singlefilefs_mount,
-        .kill_sb        = singlefilefs_kill_superblock,
+    .name           = "singlefilefs",
+    .mount          = singlefilefs_mount,
+    .kill_sb        = singlefilefs_kill_superblock,
 };
 
 

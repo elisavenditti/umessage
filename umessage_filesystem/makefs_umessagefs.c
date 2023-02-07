@@ -26,7 +26,8 @@ int main(int argc, char *argv[])
 	struct onefilefs_inode file_inode;
 	struct onefilefs_dir_record record;
 	char *block_padding;
-	char *file_body = "Wathever content you would like.\n";//this is the default content of the unique file 
+	// char *file_body = "Wathever content you would like.\n";//this is the default content of the unique file 
+
 
 	if (argc != 2) {
 		printf("Usage: mkfs-singlefilefs <device>\n");
@@ -39,8 +40,11 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	//pack the superblock
-	sb.version = 1;//file system version
+
+
+	// pack the superblock
+
+	sb.version = 1;								// file system version
 	sb.magic = MAGIC;
 	sb.block_size = DEFAULT_BLOCK_SIZE;
 
@@ -54,10 +58,13 @@ int main(int argc, char *argv[])
 
 	printf("Super block written succesfully\n");
 
+
+
 	// write file inode
+
 	file_inode.mode = S_IFREG;
 	file_inode.inode_no = SINGLEFILEFS_FILE_INODE_NUMBER;
-	file_inode.file_size = strlen(file_body);
+	file_inode.file_size = NBLOCKS*DEFAULT_BLOCK_SIZE;
 	printf("File size is %ld\n",file_inode.file_size);
 	fflush(stdout);
 	ret = write(fd, (char *)&file_inode, sizeof(file_inode));
@@ -69,8 +76,11 @@ int main(int argc, char *argv[])
 	}
 
 	printf("File inode written succesfully.\n");
-	
+
+
+		
 	//padding for block 1
+	
 	nbytes = DEFAULT_BLOCK_SIZE - sizeof(file_inode);
 	block_padding = malloc(nbytes);
 
@@ -83,15 +93,18 @@ int main(int argc, char *argv[])
 	}
 	printf("Padding in the inode block written sucessfully.\n");
 
-	//write file datablock
-	nbytes = strlen(file_body);
-	ret = write(fd, file_body, nbytes);
-	if (ret != nbytes) {
-		printf("Writing file datablock has failed.\n");
-		close(fd);
-		return -1;
-	}
-	printf("File datablock has been written succesfully.\n");
+
+
+	// write file datablock
+
+	// nbytes = strlen(file_body);
+	// ret = write(fd, file_body, nbytes);
+	// if (ret != nbytes) {
+	// 	printf("Writing file datablock has failed.\n");
+	// 	close(fd);
+	// 	return -1;
+	// }
+	// printf("File datablock has been written succesfully.\n");
 
 	close(fd);
 

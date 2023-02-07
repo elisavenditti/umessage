@@ -5,14 +5,12 @@
 #include <linux/fs.h>
 
 
-//#define MOD_NAME "SINGLE FILE FS"
-
 #define MAGIC 0x42424242
-#define DEFAULT_BLOCK_SIZE 4096
+// #define DEFAULT_BLOCK_SIZE 4096
 #define SB_BLOCK_NUMBER 0
 #define DEFAULT_FILE_INODE_BLOCK 1
 
-#define FILENAME_MAXLEN 255
+#define FILENAME_MAXLEN 255						// serve?
 
 #define SINGLEFILEFS_ROOT_INODE_NUMBER 10
 #define SINGLEFILEFS_FILE_INODE_NUMBER 1
@@ -21,7 +19,7 @@
 
 #define UNIQUE_FILE_NAME "the-file"
 
-//inode definition
+// inode definition
 struct onefilefs_inode {
 	mode_t mode;				//not exploited
 	uint64_t inode_no;
@@ -33,14 +31,14 @@ struct onefilefs_inode {
 	};
 };
 
-//dir definition (how the dir datablock is organized)
+// dir definition (how the dir datablock is organized)
 struct onefilefs_dir_record {
 	char filename[FILENAME_MAXLEN];
 	uint64_t inode_no;
 };
 
 
-//superblock definition
+// superblock definition
 struct onefilefs_sb_info {
 	uint64_t version;
 	uint64_t magic;

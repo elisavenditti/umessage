@@ -50,8 +50,8 @@ int init_module(void) {
         int ret2;
 
 	AUDIT{
-	   printk("%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
-     	   printk("%s: initializing - hacked entries %d\n",MODNAME,HACKED_ENTRIES);
+	   printk(KERN_INFO "%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
+     	   printk(KERN_INFO "%s: initializing - hacked entries %d\n",MODNAME,HACKED_ENTRIES);
 	}
 
 
@@ -63,7 +63,7 @@ int init_module(void) {
 
         ret = get_entries(restore,HACKED_ENTRIES,(unsigned long*)the_syscall_table,&the_ni_syscall);
         if (ret != HACKED_ENTRIES){
-                printk("%s: could not hack %d entries (just %d)\n",MODNAME,HACKED_ENTRIES,ret); 
+                printk(KERN_INFO "%s: could not hack %d entries (just %d)\n",MODNAME,HACKED_ENTRIES,ret); 
                 return -1;      
         }
 
@@ -73,7 +73,7 @@ int init_module(void) {
         }
 	protect_memory();
 
-        printk("%s: all new system-calls correctly installed on sys-call table\n",MODNAME);
+        printk(KERN_INFO "%s: all new system-calls correctly installed on sys-call table\n",MODNAME);
 
 
 
@@ -93,9 +93,9 @@ int init_module(void) {
 
         ret2 = register_filesystem(&onefilefs_type);
         if (likely(ret2 == 0))
-                printk("%s: sucessfully registered umessagefs\n",MODNAME);
+                printk(KERN_INFO "%s: sucessfully registered umessagefs\n",MODNAME);
         else
-                printk("%s: failed to register umessagefs - error %d", MODNAME,ret2);
+                printk(KERN_INFO "%s: failed to register umessagefs - error %d", MODNAME,ret2);
 
         return 0;
 
@@ -115,7 +115,7 @@ void cleanup_module(void) {
                 ((unsigned long *)the_syscall_table)[restore[i]] = the_ni_syscall;
         }
 	protect_memory();
-        printk("%s: sys-call table restored to its original content\n",MODNAME);
+        printk(KERN_INFO "%s: sys-call table restored to its original content\n",MODNAME);
 
         // eliminazione del device driver
         
@@ -127,9 +127,9 @@ void cleanup_module(void) {
         ret = unregister_filesystem(&onefilefs_type);
 
         if (likely(ret == 0))
-                printk("%s: sucessfully unregistered file system driver\n",MODNAME);
+                printk(KERN_INFO "%s: sucessfully unregistered file system driver\n",MODNAME);
         else
-                printk("%s: failed to unregister umessagefs driver - error %d", MODNAME, ret);
+                printk(KERN_INFO "%s: failed to unregister umessagefs driver - error %d", MODNAME, ret);
 
 
 	return;
