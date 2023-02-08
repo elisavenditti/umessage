@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../umessage_header.h"
+#include "../umessage_header.h"	
 #include "umessagefs.h"
 
 /*
@@ -16,6 +16,8 @@
 	- BLOCK 1, inode of the unique file (the inode for root is volatile);
 	- BLOCK 2, ..., datablocks of the unique file 
 */
+
+// Codice utente per formattare il dispositivo fisico
 
 int main(int argc, char *argv[])
 {
@@ -96,15 +98,15 @@ int main(int argc, char *argv[])
 
 
 	// write file datablock
-
-	// nbytes = strlen(file_body);
-	// ret = write(fd, file_body, nbytes);
-	// if (ret != nbytes) {
-	// 	printf("Writing file datablock has failed.\n");
-	// 	close(fd);
-	// 	return -1;
-	// }
-	// printf("File datablock has been written succesfully.\n");
+	char* file_body = "bingo!";
+	nbytes = strlen(file_body);
+	ret = write(fd, file_body, nbytes);
+	if (ret != nbytes) {
+		printf("Writing file datablock has failed.\n");
+		close(fd);
+		return -1;
+	}
+	printf("File datablock has been written succesfully.\n");
 
 	close(fd);
 

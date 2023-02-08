@@ -26,4 +26,6 @@ create-fs:
 	
 mount-fs:
 	mount -o loop -t singlefilefs image ./mount/
-	
+
+umount-fs:
+	umount ./mount/	

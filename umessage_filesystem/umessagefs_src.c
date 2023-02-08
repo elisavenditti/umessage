@@ -11,6 +11,7 @@
 // #include "../umessage_header.h"
 #include "umessagefs.h"
 
+static char* block_device_name;
 
 
 static struct super_operations singlefilefs_super_ops = {
@@ -98,9 +99,10 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
 
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting onefilefs",MODNAME);
-    else
+    else{
         printk("%s: singlefilefs is succesfully mounted on from device %s\n",MODNAME,dev_name);
-
+        block_device_name = dev_name;
+    }
     return ret;
 }
 
