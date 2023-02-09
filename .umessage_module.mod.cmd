@@ -1,1 +1,0 @@
-cmd_/home/elisa/Scrivania/umessage/umessage_module.mod := { echo  /home/elisa/Scrivania/umessage/umessage.o /home/elisa/Scrivania/umessage/lib/scth.o /home/elisa/Scrivania/umessage/umessage_filesystem/file.o /home/elisa/Scrivania/umessage/umessage_filesystem/dir.o;  echo; } > /home/elisa/Scrivania/umessage/umessage_module.mod

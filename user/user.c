@@ -61,17 +61,17 @@ int main(int argc, char** argv){
 				int fd = open(buff,O_RDWR);
 				if(fd == -1) {
 					printf("open error on device %s\n",buff);
-					return NULL;
+					return -1;
 				}
 				printf("device %s successfully opened\n",buff);
 				if(1){
 					char* lettura = "";
 					size_t size = 10;
 					ssize_t read_ret = read(fd, (void *)lettura, size);
-					printf("La lettura mi ha restituito: %s\n", lettura, size);
+					printf("La lettura mi ha restituito: %s\n", lettura);
 				} else
 					write(fd,"DATA",4);
-				return;
+				//return 0;
 			}
 			break;
 		default:

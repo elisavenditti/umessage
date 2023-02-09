@@ -99,6 +99,8 @@ int main(int argc, char *argv[])
 
 	// write file datablock
 	char* file_body = "bingo!";
+	int i=0;
+bis:
 	nbytes = strlen(file_body);
 	ret = write(fd, file_body, nbytes);
 	if (ret != nbytes) {
@@ -106,7 +108,22 @@ int main(int argc, char *argv[])
 		close(fd);
 		return -1;
 	}
+	nbytes = DEFAULT_BLOCK_SIZE - sizeof(file_body);
+	block_padding = malloc(nbytes);
+
+	ret = write(fd, block_padding, nbytes);
+	if (ret != nbytes) {
+		printf("The padding bytes are not written properly. Retry your mkfs\n");
+		close(fd);
+		return -1;
+	}
 	printf("File datablock has been written succesfully.\n");
+
+	i++;
+	if(i==1){
+		file_body = "bongo ...";
+		goto bis;
+	}
 
 	close(fd);
 

@@ -11,7 +11,7 @@
 // #include "../umessage_header.h"
 #include "umessagefs.h"
 
-static char* block_device_name;
+char block_device_name[20];
 
 
 static struct super_operations singlefilefs_super_ops = {
@@ -86,6 +86,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
 
 static void singlefilefs_kill_superblock(struct super_block *s) {
     kill_block_super(s);
+    block_device_name[0] = "";
     printk(KERN_INFO "%s: singlefilefs unmount succesful.\n",MODNAME);
     return;
 }
@@ -99,9 +100,15 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
 
     if (unlikely(IS_ERR(ret)))
         printk("%s: error mounting onefilefs",MODNAME);
-    else{
+    else {
+
         printk("%s: singlefilefs is succesfully mounted on from device %s\n",MODNAME,dev_name);
-        block_device_name = dev_name;
+
+        // need to remember the name of the loop device in order to access data later on        
+        int len = strlen(dev_name);        
+        strncpy(block_device_name, dev_name, len);
+        block_device_name[len]='\0';
+    
     }
     return ret;
 }
@@ -114,37 +121,3 @@ static struct file_system_type onefilefs_type = {
     .kill_sb        = singlefilefs_kill_superblock,
 };
 
-
-// static int singlefilefs_init(void) {
-
-//     int ret;
-
-//     //register filesystem
-//     ret = register_filesystem(&onefilefs_type);
-//     if (likely(ret == 0))
-//         printk("%s: sucessfully registered singlefilefs\n",MODNAME);
-//     else
-//         printk("%s: failed to register singlefilefs - error %d", MODNAME,ret);
-
-//     return ret;
-// }
-
-// static void singlefilefs_exit(void) {
-
-//     int ret;
-
-//     //unregister filesystem
-//     ret = unregister_filesystem(&onefilefs_type);
-
-//     if (likely(ret == 0))
-//         printk("%s: sucessfully unregistered file system driver\n",MODNAME);
-//     else
-//         printk("%s: failed to unregister singlefilefs driver - error %d", MODNAME, ret);
-// }
-
-// module_init(singlefilefs_init);
-// module_exit(singlefilefs_exit);
-
-// MODULE_LICENSE("GPL");
-// MODULE_AUTHOR("Francesco QUaglia <francesco.quaglia@uniroma2.it>");
-// MODULE_DESCRIPTION("SINGLE-FILE-FS");
