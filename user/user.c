@@ -15,6 +15,8 @@ int main(int argc, char** argv){
     long int arg;	
 	char operation;
 	int ret;
+	size_t size = 10;
+	char* lettura = malloc(size);
 	
 	if(argc < 3){
 		goto error_params;
@@ -64,11 +66,11 @@ int main(int argc, char** argv){
 					return -1;
 				}
 				printf("device %s successfully opened\n",buff);
-				if(1){
-					char* lettura = "";
-					size_t size = 10;
-					ssize_t read_ret = read(fd, (void *)lettura, size);
-					printf("La lettura mi ha restituito: %s\n", lettura);
+				if(0){
+				
+					
+					ssize_t read_ret = read(fd, lettura, size);
+					printf("La lettura mi ha restituito %ld byte: %s\n\n", read_ret, lettura);
 				} else
 					write(fd,"DATA",4);
 				//return 0;

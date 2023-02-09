@@ -86,7 +86,9 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
 
 static void singlefilefs_kill_superblock(struct super_block *s) {
     kill_block_super(s);
-    block_device_name[0] = "";
+    //block_device_name[0] = '';
+    strncpy(block_device_name, " ", 1);
+    block_device_name[1]='\0';
     printk(KERN_INFO "%s: singlefilefs unmount succesful.\n",MODNAME);
     return;
 }
@@ -94,6 +96,7 @@ static void singlefilefs_kill_superblock(struct super_block *s) {
 //called on file system mounting 
 struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data) {
 
+    int len;
     struct dentry *ret;
 
     ret = mount_bdev(fs_type, flags, dev_name, data, singlefilefs_fill_super);
@@ -105,7 +108,7 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
         printk("%s: singlefilefs is succesfully mounted on from device %s\n",MODNAME,dev_name);
 
         // need to remember the name of the loop device in order to access data later on        
-        int len = strlen(dev_name);        
+        len = strlen(dev_name);        
         strncpy(block_device_name, dev_name, len);
         block_device_name[len]='\0';
     

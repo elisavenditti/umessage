@@ -108,7 +108,7 @@ bis:
 		close(fd);
 		return -1;
 	}
-	nbytes = DEFAULT_BLOCK_SIZE - sizeof(file_body);
+	nbytes = DEFAULT_BLOCK_SIZE - strlen(file_body);
 	block_padding = malloc(nbytes);
 
 	ret = write(fd, block_padding, nbytes);
@@ -124,7 +124,14 @@ bis:
 		file_body = "bongo ...";
 		goto bis;
 	}
-
+	if(i==2){
+		file_body = "bango ???";
+		goto bis;
+	}
+	if(i==3){
+		file_body = "bengo $$$";
+		goto bis;
+	}
 	close(fd);
 
 	return 0;
