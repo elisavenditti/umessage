@@ -84,7 +84,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 
    if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
       printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
-      return -1;                          // return ENODEV ?
+      return -1;                          // return ENODEV ? settare ERRNO ?
    }
 
    // the block device is essential to reach the actual data to read
@@ -94,20 +94,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
    if(bdev == NULL){
       printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
       return -1;                          // return ENODEV ?
-   }
-
-
-   // proma di tutto prendo i dati da aggiornare
-
-   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_write);
-   if(!bh){
-      return -EIO;
-   }
-   if (bh->b_data != NULL){
-      
-      old_message = bh->b_data;
-      AUDIT printk(KERN_INFO "%s: [blocco %d] valore vecchio: %s\n", MODNAME, block_to_write, bh->b_data);
-   
    }
 
 
@@ -122,8 +108,25 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 	ret = copy_from_user(message, buff, len);
 	message[len]='\0';
 	printk(KERN_INFO "%s: [blocco %d] valore da inserire: %s", MODNAME, block_to_write, message);
+
+
+
+   // prendo i dati da aggiornare
+
+   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_write);
+   if(!bh){
+      return -EIO;
+   }
+   if (bh->b_data != NULL){      // e se è null che succede?
+      
+      old_message = bh->b_data;
+      AUDIT printk(KERN_INFO "%s: [blocco %d] valore vecchio: %s\n", MODNAME, block_to_write, bh->b_data);
    
+   }
+
    
+   // aggiornamento atomico
+
    cas = __sync_val_compare_and_swap(&(bh->b_data), old_message, message);
 
    if(strncmp(cas, old_message, strlen(old_message)) == 0){
@@ -139,7 +142,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
    brelse(bh);
    blkdev_put(bdev, FMODE_READ);
 
-   return DEFAULT_BLOCK_SIZE - ret;
+   return DEFAULT_BLOCK_SIZE;
    
 
 }

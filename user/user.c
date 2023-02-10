@@ -48,9 +48,11 @@ int main(int argc, char** argv){
 			break;
 		
 		case 'O':
+			if(argc<5) goto error_params;
 			char *path = "/dev/umessage";
 			int major = strtol(argv[2],NULL,10);
 			int minors = strtol(argv[3],NULL,10);
+			char rw = argv[4][0];
 			char buff[4096];
 			printf("creating %d minors for device %s with major %d\n",minors,path,major);
 
@@ -66,14 +68,13 @@ int main(int argc, char** argv){
 					return -1;
 				}
 				printf("device %s successfully opened\n",buff);
-				if(0){
-				
-					
+				if(rw == 'R'){
 					ssize_t read_ret = read(fd, lettura, size);
 					printf("La lettura mi ha restituito %ld byte: %s\n\n", read_ret, lettura);
-				} else
-					write(fd,"DATA",4);
-				//return 0;
+				} else {
+					ssize_t write_ret = write(fd,"DATA",4);
+					printf("La scrittura ha cambiato %ld byte\n\n", write_ret);
+				}
 			}
 			break;
 		default:
