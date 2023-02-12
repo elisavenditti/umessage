@@ -9,23 +9,90 @@
 #include <linux/version.h>	         /* For LINUX_VERSION_CODE */
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
+#include <linux/ioctl.h>
 // #include "umessage_header.h"
 
 
 
-// DEFINIZIONI
+// DEFINIZIONI E DICHIARAZIONI
 
-static int dev_open(struct inode *, struct file *);
-static int dev_release(struct inode *, struct file *);
+static int     dev_open(struct inode *, struct file *);
+static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
+static long    dev_ioctl(struct file *, unsigned int, unsigned long);
+// int            dev_put_data(struct put_arg *);
 
-static int Major;            /* Major number assigned to broadcast device driver */
+
+static int Major;
 // static DEFINE_MUTEX(device_state);
 
 
 
 // IMPLEMENTAZIONE DELLE OPERAZIONI
+
+static long dev_ioctl(struct file *filp, unsigned int command, unsigned long param){
+   
+   // TODO
+   long ret;
+   int minor = get_minor(filp);
+   int major = get_major(filp);
+   struct block_device *bdev;
+   
+
+
+   AUDIT{
+      printk(KERN_INFO "%s: somebody called an ioctl on dev with [major,minor] number [%d,%d] and command %u \n\n",MODNAME, major, minor, command);
+      printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
+   }
+
+   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
+      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
+      return -1;                          // return ENODEV ?
+   }
+
+   if(_IOC_TYPE(command) != MAGIC_UMSG) return -EINVAL;
+
+   switch(command){
+      case PUT_DATA:
+         //ret = dev_put_data((struct put_arg *) param);
+         break;
+      case GET_DATA:
+         // ret = ...
+         // (struct get_arg*) arg
+         break;
+      case INVALIDATE_DATA:
+         // ret = ...
+         // (int *) arg
+         break;
+      default:
+         return -EINVAL;
+         
+   }
+   
+   return ret;
+
+}
+
+
+
+// PUT DATA
+
+// int dev_put_data(struct put_arg *arg){
+   
+//    char* source;
+//    size_t size;
+   
+//    source   = arg->source;
+//    size     = arg->size;
+
+
+
+//    return 0;
+// }
+
+
+
 
 static int dev_open(struct inode *inode, struct file *file) {
 
@@ -204,9 +271,12 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
 
 
 
+
+
 static struct file_operations fops = {
   .write = dev_write,
   .read = dev_read,
   .open =  dev_open,
-  .release = dev_release
+  .release = dev_release,
+  .unlocked_ioctl = dev_ioctl
 };

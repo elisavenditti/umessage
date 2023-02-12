@@ -29,7 +29,7 @@
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Elisa Venditti <elisavenditti99@gmail.com>");
-MODULE_DESCRIPTION("block level message mantainance");
+MODULE_DESCRIPTION("user message block level mantainance");
 
 
 
@@ -40,14 +40,22 @@ module_param(the_syscall_table, ulong, 0660);
 
 
 
+// STRUTTURA DATI MANTENENTE I METADATI DEI BLOCCHI
+
+struct block_node block_metadata[NBLOCKS];
+struct block_node* valid_messages;
+
 
 // FUNZIONI DI STARTUP E SHUTDOWN DEL MODULO
 
 int init_module(void) {
 
         int i;
+        int k;
         int ret;
         int ret2;
+        struct block_node block;
+        unsigned long *counter = NULL;
 
 	AUDIT{
 	   printk(KERN_INFO "%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
@@ -97,6 +105,45 @@ int init_module(void) {
         else
                 printk(KERN_INFO "%s: failed to register umessagefs - error %d", MODNAME,ret2);
 
+
+        
+        // inizializzazione dell'array
+        
+        // block_metadata = (struct block_node*) kmalloc(NBLOCKS*sizeof(struct block_node), GFP_KERNEL);
+        // if(block_metadata == NULL){
+        //         printk("%s: kmalloc error, can't allocate memory needed to manage user messages (array)\n",MODNAME);
+        //         return -1;
+        // }
+
+        for(k=0; k<NBLOCKS; k++){
+                              
+                counter = (unsigned long *) kmalloc(sizeof(unsigned long), GFP_KERNEL);
+                if(counter == NULL){
+                        printk("%s: kmalloc error, can't allocate memory needed to manage user messages (counter)\n",MODNAME);
+                        return -1;
+                }
+
+                block_metadata[k].next = NULL;
+                block_metadata[k].num = k;
+                //block_metadata[k].lock = NULL;
+                block_metadata[k].num = counter;
+                
+                // struct block_node *next = &block_metadata[k];
+                // next = (unsigned long) next^(0x8000000000000000);
+                // printk("set invalid (next): %ul (%px)\n", next,next);
+                if(k==0){
+                        printk("puntatore è:                    %px\n", &block_metadata[k]);
+                        printk("puntatore con bit invalidato è: %px\n", set_invalid(&block_metadata[k]));
+                        printk("puntatore con bit validato è:   %px\n", set_valid(&block_metadata[k]));
+                        printk("puntatore con bit inv e poi val:%px\n", set_valid(set_invalid(&block_metadata[k])));
+                        printk("puntatore ricavato da ptr puro: %px\n", get_pointer(&block_metadata[k]));
+                        printk("puntatore ricavato da ptr val:  %px\n", get_pointer(set_valid(&block_metadata[k])));
+                        printk("puntatore ricavato da ptr inval:%px\n", get_pointer(set_invalid(&block_metadata[k])));
+                        
+                }
+        }
+        
+        valid_messages = NULL;
         return 0;
 
 }
@@ -131,6 +178,9 @@ void cleanup_module(void) {
         else
                 printk(KERN_INFO "%s: failed to unregister umessagefs driver - error %d", MODNAME, ret);
 
+        
+        
+        // TODO DEALLOCARE MEMORIA PER LA LISTA ... E PER L'ARRAY ...
 
 	return;
         
