@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <fcntl.h>	// per O_RDWR
 #include <errno.h>
+#include <sys/ioctl.h>
+#include "../umessage_header.h"
 
 #define INVALIDATE 134 //this depends on what the kernel tells you when mounting the printk-example module
 #define PUT 	   156
@@ -77,6 +79,41 @@ int main(int argc, char** argv){
 				}
 			}
 			break;
+
+
+		case 'i':
+			
+			//if(argc<5) goto error_params;
+			char *path0 = "/dev/umessage";
+			int major0 = strtol(argv[2],NULL,10);
+			char buff0[4096];
+			printf("creating 1 minors for device %s with major %d\n",path0,major0);
+			sprintf(buff0,"mknod %s c %d 0\n",path0, major0);
+			system(buff0);
+				
+			printf("opening device %s\n",path0);
+			int fd = open(path0,O_RDWR);
+			if(fd == -1) {
+				printf("open error on device %s\n", path0);
+				return -1;
+			}
+			printf("device %s successfully opened\n", path0);
+			char source[40] = "ciao sono lucia e sono una sirena";
+			int taglia = strlen(source);
+			printf("sto scrivendo %d byte\n", taglia);
+			
+			struct put_args args;
+			args.source = source;
+			args.size = (size_t)taglia;
+			printf("put_args->size = %d, source=%s\n", args.size, args.source);
+			printf("put_args = %p\n", &args);
+			// int *test = (int *) ((char*)args+sizeof(char*));
+			// printf("put_args->size = %d\n", *int);
+			
+			ioctl(fd, PUT_DATA, &args);
+			break;
+
+
 		default:
 			printf("error in operation code, please insert one of the following:\n [I] for invalidate_data\n [P] for put_data\n [G] for get_data\n\n");
 			return -1;

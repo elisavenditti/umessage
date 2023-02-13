@@ -11,7 +11,7 @@
 // #include "../umessage_header.h"
 #include "umessagefs.h"
 
-char block_device_name[20];
+char block_device_name[20] = " ";
 
 
 static struct super_operations singlefilefs_super_ops = {

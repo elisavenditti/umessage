@@ -10,6 +10,7 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/ioctl.h>
+// #include <linux/uaccess.h>          // per la get_user
 // #include "umessage_header.h"
 
 
@@ -36,9 +37,11 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
    
    // TODO
    long ret;
+   void *args;
    int minor = get_minor(filp);
    int major = get_major(filp);
    struct block_device *bdev;
+   
    
 
 
@@ -53,12 +56,54 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
    }
 
    if(_IOC_TYPE(command) != MAGIC_UMSG) return -EINVAL;
-
+   
    switch(command){
       case PUT_DATA:
-         //ret = dev_put_data((struct put_arg *) param);
+         printk("indirizzo ricevuto in param: %px\n", param);
+         printk("indirizzo ricevuto in param: %s\n", ((struct put_args*)param)->source);
+         struct put_args parg;
+         size_t len;
+         char* message;
+         copy_from_user(&len, (int *)(param), sizeof(int));
+         printk("len is %d\n", len);
+
+         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((struct put_args*)param + sizeof(len)), (char*)((struct put_args*)param + sizeof(len)));
+         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((struct put_args*)param + sizeof(size_t)), (char*)((struct put_args*)param + sizeof(len)));
+         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((int*)param + sizeof(len)), (char*)((struct put_args*)param + sizeof(len)));
+         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((int*)param + sizeof(size_t)), (char*)((struct put_args*)param + sizeof(len)));
+         copy_from_user(message, &(((struct put_args*)param)->source), len);//(char *)((int*)param + 1), len);
+         printk("msg is %s\n", message);
+
+
+         // if (copy_from_user(&parg, (void *)param, sizeof(parg)))
+         //    return -EFAULT;
+
+         // char *buf = kmalloc(parg.size, GFP_KERNEL);
+         // if (!buf)
+         //    return -ENOMEM;
+
+         // if (copy_from_user(buf, parg.source, parg.size)) {
+         //    kfree(buf);
+         //    return -EFAULT;
+         // }
+
+      
+         // printk("ho ricevuto %s, %d\n", ((struct put_args *)args)->source, ((struct put_args *)args)->size);
+
+
+     
+         //get_user(len, (int *)((char *)param + sizeof(char*)));
+         //get_user(&len, (int *)((char*)param+sizeof(char*)));//, sizeof(size_t));
+         // ret = copy_from_user(buffer,buff,len);
+         //printk("size is: %d\n", len);
+
+         // copy_from_user(source, (char *) param, len);
+         // printk(KERN_INFO "4");
+         // source[len] = '\0';
+         // printk(KERN_INFO "%s: valore da inserire: %s", MODNAME, source);
+
          
-         ret = dev_put_data(((struct put_args *) param)->source, ((struct put_args *) param) ->size);
+         //ret = dev_put_data(((struct put_args *) param)->source, ((struct put_args *) param) ->size);
          break;
       case GET_DATA:
          // ret = ...
@@ -83,6 +128,30 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
 
 int dev_put_data(char* source, size_t size/*struct put_arg *arg*/){
    
+   int i;
+   struct block_node *tail;
+   struct block_node current_block;
+   struct block_node selected_block;
+
+   // get an invalid block to overwrite
+   for(i=0; i<NBLOCKS; i++){
+      
+      current_block = block_metadata[i];
+      if(get_validity(current_block.val_next) == 0){
+         
+         selected_block = current_block;
+      }
+   }
+
+   printk("il blocco invalido è il numero %d\n", selected_block.num);
+
+   // get the tail of the valid blocks (ordered write)
+   tail = valid_messages;
+   while(get_pointer(tail->val_next) != NULL){
+      tail = get_pointer(tail->val_next);
+   }
+   if(tail == NULL)  printk("la lista è vuota, coda=testa=NULL\n");
+   else              printk("la coda è al blocco: %d\n", tail->num);
 
 
 
