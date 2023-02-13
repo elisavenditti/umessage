@@ -46,7 +46,8 @@ struct get_args{
 // };
 
 struct block_node {
-    struct block_node *next;        // deve avere il bit di validità incorporato
+    struct block_node *val_next;        // il primo bit si riferisce alla validità del blocco corrente
+                                        // prima di modificare questo valore va impostata la validità corretta
     int num;
     //struct mutex lock;
     unsigned long *ctr;
@@ -61,9 +62,9 @@ extern char block_device_name[20];
 
 
 
-#define set_valid(ptr)      (struct block_node *)((unsigned long) ptr^(0x0))
-#define set_invalid(ptr)    (struct block_node *)((unsigned long) ptr^(0x8000000000000000))
-#define get_pointer(ptr)    (struct block_node *)((unsigned long) ptr|(0x8000000000000000))
+#define change_validity(ptr)    (struct block_node *)((unsigned long) ptr^(0x8000000000000000))
+#define get_pointer(ptr)        (struct block_node *)((unsigned long) ptr|(0x8000000000000000))
+#define get_validity(ptr)       ((unsigned long) ptr >> (sizeof(unsigned long) * 8 - 1))
 
 
 #endif

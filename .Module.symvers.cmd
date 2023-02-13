@@ -1,1 +1,0 @@
-cmd_/home/elisa/Scrivania/umessage/Module.symvers := sed 's/\.ko$$/\.o/' /home/elisa/Scrivania/umessage/modules.order | scripts/mod/modpost -m -a  -o /home/elisa/Scrivania/umessage/Module.symvers -e -i Module.symvers   -T -

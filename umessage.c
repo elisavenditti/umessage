@@ -123,22 +123,23 @@ int init_module(void) {
                         return -1;
                 }
 
-                block_metadata[k].next = NULL;
+                block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)
                 block_metadata[k].num = k;
                 //block_metadata[k].lock = NULL;
                 block_metadata[k].num = counter;
                 
-                // struct block_node *next = &block_metadata[k];
-                // next = (unsigned long) next^(0x8000000000000000);
-                // printk("set invalid (next): %ul (%px)\n", next,next);
+                
                 if(k==0){
-                        printk("puntatore è:                    %px\n", &block_metadata[k]);
-                        printk("puntatore con bit invalidato è: %px\n", set_invalid(&block_metadata[k]));
-                        printk("puntatore con bit validato è:   %px\n", set_valid(&block_metadata[k]));
-                        printk("puntatore con bit inv e poi val:%px\n", set_valid(set_invalid(&block_metadata[k])));
-                        printk("puntatore ricavato da ptr puro: %px\n", get_pointer(&block_metadata[k]));
-                        printk("puntatore ricavato da ptr val:  %px\n", get_pointer(set_valid(&block_metadata[k])));
-                        printk("puntatore ricavato da ptr inval:%px\n", get_pointer(set_invalid(&block_metadata[k])));
+                        printk("puntatore è:                     %px\n", &block_metadata[k]);
+                        printk("puntatore con bit invalidato è:  %px\n", change_validity(&block_metadata[k]));
+                        printk("puntatore con bit val dopo inv:  %px\n", change_validity(change_validity(&block_metadata[k])));
+                        printk("puntatore ricavato da ptr puro:  %px\n", get_pointer(&block_metadata[k]));
+                        printk("puntatore ricavato da ptr val:   %px\n", get_pointer(change_validity(change_validity(&block_metadata[k]))));
+                        printk("puntatore ricavato da ptr inval: %px\n", get_pointer(change_validity(&block_metadata[k])));
+                        printk("validità ptr:                    %d\n", get_validity(&block_metadata[k]));
+                        printk("validità ptr invalido:           %d\n", get_validity(change_validity(&block_metadata[k])));
+                        printk("validità ptr valido:             %d\n", get_validity(change_validity(change_validity(&block_metadata[k]))));
+                        printk("validità ptr null:               %d\n", get_validity(NULL));
                         
                 }
         }

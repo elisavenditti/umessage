@@ -22,6 +22,7 @@ static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
 static long    dev_ioctl(struct file *, unsigned int, unsigned long);
 // int            dev_put_data(struct put_arg *);
+int            dev_put_data(char *, size_t);
 
 
 static int Major;
@@ -56,6 +57,8 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
    switch(command){
       case PUT_DATA:
          //ret = dev_put_data((struct put_arg *) param);
+         
+         ret = dev_put_data(((struct put_args *) param)->source, ((struct put_args *) param) ->size);
          break;
       case GET_DATA:
          // ret = ...
@@ -78,18 +81,13 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
 
 // PUT DATA
 
-// int dev_put_data(struct put_arg *arg){
+int dev_put_data(char* source, size_t size/*struct put_arg *arg*/){
    
-//    char* source;
-//    size_t size;
-   
-//    source   = arg->source;
-//    size     = arg->size;
 
 
 
-//    return 0;
-// }
+   return 0;
+}
 
 
 
