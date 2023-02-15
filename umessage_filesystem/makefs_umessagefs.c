@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../umessage_header.h"	
+#include "../user_hdr.h"
 #include "umessagefs.h"
 
 /*

@@ -55,6 +55,7 @@ int init_module(void) {
         int ret;
         int ret2;
         unsigned long *counter = NULL;
+        struct block_node *head;
 
 	AUDIT{
 	   printk(KERN_INFO "%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
@@ -125,7 +126,7 @@ int init_module(void) {
                 block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)
                 block_metadata[k].num = k;
                 block_metadata[k].ctr = counter;
-                spin_lock_init(&block_metadata[k].lock);
+                mutex_init(&block_metadata[k].lock);
                 
                 if(k==0){
                         printk("puntatore è:                     %px\n", &block_metadata[k]);
@@ -141,8 +142,23 @@ int init_module(void) {
                         
                 }
         }
+
+
+        // creo una head permanente a cui agganciare elementi
+        head = (struct block_node *) kmalloc(sizeof(struct block_node), GFP_KERNEL);
+        if(head == NULL){
+                printk("%s: kmalloc error, can't allocate memory needed to manage permanent head\n",MODNAME);
+                return -1;
+        }
+
+        head->val_next = change_validity(NULL);
+        head->num = -1;
+        head->ctr = 0;
+        mutex_init(&head->lock);
+        printk("chg validity NULL               = %px\n", change_validity(NULL));
+        printk("get_pointer(NULL)               = %px\n", get_pointer(NULL));
         
-        valid_messages = NULL;
+        valid_messages = head;
         return 0;
 
 }

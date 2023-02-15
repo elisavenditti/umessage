@@ -11,11 +11,6 @@
 #define PUT 	   156
 #define GET	   	   174
 
-
-
-char* contenuti[] = {"ciao sono lucia e sono una sirena", "può sembrare strano ma è una storia vera", "la leggenda su di noi è già la verità ...", 
-"dragon ball gt, siamo tutti qui", "non c'è un drago più super di così", "dragon ball perchè, ogni sfera è ...", "l'energia che risplende in te!"};
-
 int main(int argc, char** argv){
 
  	
@@ -31,71 +26,27 @@ int main(int argc, char** argv){
 	
 	
 	operation = argv[1][0];
-
-	char *path0 = "/dev/umessage";
-	int major0 = strtol(argv[2],NULL,10);
-	char buff0[4096];
-	printf("creating 1 minors for device %s with major %d\n",path0,major0);
-	sprintf(buff0,"mknod %s c %d 0\n",path0, major0);
-	system(buff0);
-				
-	printf("opening device %s\n",path0);
-	int fd = open(path0,O_RDWR);
-	if(fd == -1) {
-		printf("open error on device %s\n", path0);
-		return -1;
-	}
-	printf("device %s successfully opened\n", path0);
-			
+	
+	
+	printf("sto per chiamare questa intelligentissima syscall\n");
+	
 	switch(operation){
-
 		case 'I':
-			// invalidate data
-
-			int num = 1;
-			ioctl(fd, INVALIDATE_DATA, &num);
-			// arg = strtol(argv[2],NULL,10);
-			// ret = syscall(INVALIDATE, arg);
+			arg = strtol(argv[2],NULL,10);
+			ret = syscall(INVALIDATE, arg);
 			break;
-		
-		
 		case 'P':
-			// put data
-			if(argc<4) goto error_params;
-			arg = strtol(argv[3],NULL,10);
-			// char source[40] = "ciao sono lucia e sono una sirena";
-			printf("%s",contenuti[arg]);
-			int taglia = strlen(contenuti[arg]);			
-			struct put_args args;
-			args.source = contenuti[arg];
-			args.size = (size_t)taglia;
-			ioctl(fd, PUT_DATA, &args);
-			
-			
 			//strlen non conta il terminatore di stringa
-			// ret = syscall(PUT, argv[2], strlen(argv[2]));
+			ret = syscall(PUT, argv[2], strlen(argv[2]));
 			break;
-		
-		
 		case 'G':
-			// get data
+		// 	int sys_get_data(int offset, char* destination, size_t size){
 			if(argc<4) goto error_params;
-			arg = strtol(argv[3],NULL,10);
-			char dest[100];
-			struct get_args garg;
-			garg.offset = arg;
-			garg.destination = dest;
-			garg.size = 20;
-			printf("voglio ricevere i dati in %p\n", dest);
-			ioctl(fd, GET_DATA, &garg);
-			printf("ho letto %d byte dal blocco %d: '%s'\n", garg.size, garg.offset, garg.destination);
-		
-			// if(argc<4) goto error_params;
-			// arg = strtol(argv[2],NULL,10);
-			// size_t size = strtol(argv[3],NULL,10);
-			// char* destination = "";
-			// printf("voglio mettere in destination (%p) i dati letti\n", destination);
-			// ret = syscall(GET, arg, destination, size);
+			arg = strtol(argv[2],NULL,10);
+			size_t size = strtol(argv[3],NULL,10);
+			char* destination = "";
+			printf("voglio mettere in destination (%p) i dati letti\n", destination);
+			ret = syscall(GET, arg, destination, size);
 			break;
 		
 		case 'O':
@@ -130,6 +81,51 @@ int main(int argc, char** argv){
 			break;
 
 
+		case 'i':
+
+			char *path0 = "/dev/umessage";
+			int major0 = strtol(argv[2],NULL,10);
+			char buff0[4096];
+			printf("creating 1 minors for device %s with major %d\n",path0,major0);
+			sprintf(buff0,"mknod %s c %d 0\n",path0, major0);
+			system(buff0);
+				
+			printf("opening device %s\n",path0);
+			int fd = open(path0,O_RDWR);
+			if(fd == -1) {
+				printf("open error on device %s\n", path0);
+				return -1;
+			}
+			printf("device %s successfully opened\n", path0);
+			
+			
+			// put data
+
+			// char source[40] = "ciao sono lucia e sono una sirena";
+			// int taglia = strlen(source);			
+			// struct put_args args;
+			// args.source = source;
+			// args.size = (size_t)taglia;
+			// ioctl(fd, PUT_DATA, &args);
+			
+			
+			// invalidate data
+
+			// int num = 1;
+			// ioctl(fd, INVALIDATE_DATA, &num);
+
+
+			// get data
+
+			char dest[100];
+			struct get_args garg;
+			garg.offset = 2;
+			garg.destination = dest;
+			garg.size = 20;
+			printf("voglio ricevere i dati in %p\n", dest);
+			ioctl(fd, GET_DATA, &garg);
+			printf("ho letto %d byte dal blocco %d: '%s'\n", garg.size, garg.offset, garg.destination);
+			break;
 
 
 		default:

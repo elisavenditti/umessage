@@ -10,10 +10,8 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/ioctl.h>
-#include <linux/spinlock_types.h>
 // #include <linux/uaccess.h>          // per la get_user
 // #include "umessage_header.h"
-
 
 
 // DEFINIZIONI E DICHIARAZIONI
@@ -23,11 +21,13 @@ static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
 static long    dev_ioctl(struct file *, unsigned int, unsigned long);
-// int            dev_put_data(struct put_arg *);
 int            dev_put_data(char *, size_t);
+int            dev_invalidate_data(int);
+int            dev_get_data(int, char *, size_t);
 
 
 static int Major;
+struct block_device *bdev;
 // static DEFINE_MUTEX(device_state);
 
 
@@ -59,10 +59,12 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
    if(_IOC_TYPE(command) != MAGIC_UMSG) return -EINVAL;
    
    switch(command){
+
       case PUT_DATA:
          
          // 1. prendere parametri dall'utente
          // alloco dinamicamente l'area di memoria per ospitare la struttura put_args, poi la popolo
+
          arg = kmalloc(sizeof(struct put_args), GFP_KERNEL);
          if(!arg){
             printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
@@ -72,7 +74,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
          ret = copy_from_user(arg, (void *) param, sizeof(struct put_args));
          len = ((struct put_args*)arg)->size;
          
-         
+
          // alloco dinamicamente l'area di memoria per ospitare il messaggio, poi lo copio dallo spazio utente
          message = kmalloc(len+1, GFP_KERNEL);
          if (!message){
@@ -89,14 +91,50 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
          // 2. logica di inserimento di un messaggio
          ret = dev_put_data(((struct put_args *) arg)->source, ((struct put_args *) arg)->size);
          break;
+      
+      
       case GET_DATA:
-         // ret = ...
-         // (struct get_arg*) arg
+
+         // struct get_args{
+         //    int offset;
+         //    char * destination;
+         //    size_t size;
+         // };
+
+         // 1. prendere parametri dall'utente
+         // alloco dinamicamente l'area di memoria per ospitare la struttura get_args, poi la popolo
+
+         arg = kmalloc(sizeof(struct get_args), GFP_KERNEL);
+         if(!arg){
+            printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
+            return -1;
+         }
+
+         ret = copy_from_user(arg, (void *) param, sizeof(struct get_args));
+         
+         printk("buffer to insert: %px - len to read: %d - block to read: %d \n", ((struct get_args*)arg)->destination, ((struct get_args*)arg)->size, ((struct get_args*)arg)->offset);
+
+         // 2. logica di inserimento di un messaggio
+         ret = dev_get_data(((struct get_args*)arg)->offset, ((struct get_args*)arg)->destination, ((struct get_args*)arg)->size);
          break;
+      
+      
       case INVALIDATE_DATA:
-         // ret = ...
-         // (int *) arg
+         // 1. prendere parametri dall'utente
+         arg = kmalloc(sizeof(int), GFP_KERNEL);
+         if(!arg){
+            printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n", MODNAME);
+            return -1;
+         }
+
+         ret = copy_from_user(arg, (void *) param, sizeof(int));        
+         printk("block to invalidate is: %d\n", *((int*)arg));
+
+         // 2. logica di eliminazione di un messaggio
+         ret = dev_invalidate_data(*((int*)arg));
          break;
+
+      
       default:
          return -EINVAL;
          
@@ -113,64 +151,183 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
 int dev_put_data(char* source, size_t size){
    
    int i;
+   // int found;
+   int block_to_write;
    struct block_node *cas;
    struct block_node *tail;
+   struct buffer_head *bh = NULL;
    struct block_node current_block;
-   struct block_node selected_block;
+   struct block_node* selected_block = NULL;
+
+   
+   //STAMPA PROVA
+   for(i=0; i<NBLOCKS; i++){
+      printk("%d) val_next=%px", i, block_metadata[i].val_next);
+   }
+   //FINE STAMPA
 
    // get an invalid block to overwrite
+   // found = 0;
    for(i=0; i<NBLOCKS; i++){
       
       current_block = block_metadata[i];
       
       if(get_validity(current_block.val_next) == 0){
-         selected_block = current_block;
+         selected_block = &block_metadata[i];
+         // found = 1;
          break;
       }
    }
+   // if (found == 0){
+   if (selected_block == NULL){
+      printk("%s: no space available to insert a message\n", MODNAME);
+      return -1;
+   }
+   printk("il blocco invalido è il numero %d\n", selected_block->num);
 
-   printk("il blocco invalido è il numero %d\n", selected_block.num);
+
 
    // get the tail of the valid blocks (ordered write)
    tail = valid_messages;
    
-   if(tail != NULL){
-      while(get_pointer(tail->val_next) != NULL){
-         tail = get_pointer(tail->val_next);
-      }
-      printk("la coda è al blocco: %d\n", tail->num);
+   while(get_pointer(tail->val_next) != change_validity(NULL)){       // l'ultimo nella lista avrà puntatore a NULL ma valido
+      tail = get_pointer(tail->val_next);
    }
-
-   else printk("la lista è vuota, coda=testa=NULL\n");
+   printk("la coda è al blocco: %d\n", tail->num);
+   
    
 
    // write lock on the selected block
-   spin_unlock(&selected_block.lock);
+   mutex_lock(&(selected_block->lock));
+   
+   selected_block->val_next = change_validity(NULL);                                                // Il NULL ha come primo bit 0 (invalido) e bisogna 
+                                                                                                   // validarlo prima di inserirlo nei metadati.
+   printk("ora il blocco selezionato ha val_next: %px\n", selected_block->val_next);
+   cas = __sync_val_compare_and_swap(&(tail->val_next), change_validity(NULL), selected_block);    // ALL OR NOTHING - scambio il campo next della coda (NULL)
+                                                                                                   // con il puntatore all'elemento che sto inserendo
+                                                                                                   // (ptr nel kernel ha bit a sx = 1, valido). Il bit di validità nel
+                                                                                                   // puntatore garantisce il fallimento in caso di interferenze
+
+   if(cas != change_validity(NULL)){
+      // FALLIMENTO
+      printk("%s: La CAS ha fallito, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(tail->val_next), selected_block);
+      mutex_unlock(&(selected_block->lock));
+      return -1;
+   }
+   
+
+   // SUCCESSO - ricevo il valore vecchio
+   printk("%s: La CAS ha avuto successo ex_coda.next = %px, &inserted_block = %px\n", MODNAME, change_validity(tail->val_next), selected_block);
+      
+      
+   // trovare il block device   
+   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
+      printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
+      mutex_unlock(&(selected_block->lock));
+      return -1;                          // return ENODEV ? settare ERRNO ?
+   }
+
+   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
+   
+   if(bdev == NULL){
+      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
+      mutex_unlock(&(selected_block->lock));
+      return -1;                          // return ENODEV ?
+   }
+
+
+   // prendo i dati da aggiornare
+   
+   block_to_write = offset(selected_block->num);
+   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_write);
+   if(!bh){
+      return -EIO;
+   }
+   if (bh->b_data != NULL){      // e se è null che succede?
+      AUDIT printk(KERN_INFO "%s: [blocco %d] valore vecchio: %s\n", MODNAME, block_to_write, bh->b_data);   
+   }
 
    
-   selected_block.val_next = change_validity(NULL);                                             // il NULL ha come primo bit 0 (invalido) e bisogna 
-                                                                                                // validarlo prima di inserirlo nei metadati
-   cas = __sync_val_compare_and_swap(&(tail.next), change_validity(NULL), &selected_block);     // ALL OR NOTHING - scambio il campo next della coda (NULL)
-                                                                                                // con il puntatore all'elemento che sto inserendo
-                                                                                                // (ptr nel kernel ha bit a sx = 1, valido). Il bit di validità nel
-                                                                                                // puntatore garantisce il fallimento in caso di interferenze
+   // aggiornamento non atomico, il lock protegge da scritture concorrenti
+   strncpy(bh->b_data, source, size);  
+   brelse(bh);
+   blkdev_put(bdev, FMODE_READ);
+   mutex_unlock(&(selected_block->lock));  
 
-   if(cas == change_validity(NULL)){
-      // SUCCESSO - ricevo il valore vecchio
-      printk("%s: La CAS ha avuto successo ex_coda.next = %px, &inserted_block = %px\n", MODNAME, change_validity(tail.next), &inserted_block);
+   return DEFAULT_BLOCK_SIZE;
+
+}
+
+
+
+
+// GET DATA
+
+int dev_get_data(int offset, char * destination, size_t size){
+
+   int ret;
+   int block_to_read;
+   struct buffer_head *bh = NULL;
+   struct block_node* selected_block;
+
+   
+   // get metadata of the block
+   
+   block_to_read = offset(offset);   
+   selected_block = &block_metadata[block_to_read];
       
-      // TODO - scrivi nel device
+   if(get_validity(selected_block->val_next) == 0){
+      printk(KERN_INFO "%s: the block requested is not valid", MODNAME);
+      return 0;
    }
-   else {
-      // FALLIMENTO
-      printk("%s: La CAS ha fallito, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(tail.next), &selected_block);
-   } 
+
+   printk("CTR vecchio valore: %ul\n", MODNAME, selected_block->ctr);
+   
+   // increase read counter of 1 unit
+   __sync_fetch_and_add(&(selected_block->ctr),1);
+   printk("CTR nuovo valore: %ul\n", MODNAME, selected_block->ctr);
+
+   
+      
+   // trovare il block device   
+   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
+      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
+      return -1;                          // return ENODEV ? settare ERRNO ?
+   }
+
+   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
+   
+   if(bdev == NULL){
+      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
+      return -1;                          // return ENODEV ?
+   }
 
 
-   spin_unlock(&selected_block.lock);  
+   // prendo i dati dalla cache
 
+   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
+   if(!bh){
+      return -EIO;
+   }
+   if (bh->b_data != NULL)
+      AUDIT printk(KERN_INFO "%s: [blocco %d] ho letto -> %s\n", MODNAME, block_to_read, bh->b_data);
 
+   
+   // ritorna il numero di byte che non ha potuto copiare
+   ret = copy_to_user(destination, bh->b_data, size);
 
+   __sync_fetch_and_sub(&(selected_block->ctr),1);
+   printk("CTR reset al valore: %ul\n", MODNAME, selected_block->ctr);
+   brelse(bh);
+   blkdev_put(bdev, FMODE_READ);
+
+   return size-ret;
+}
+
+// INVALIDATE DATA
+
+int dev_invalidate_data(int offset){
+   printk("ho ricevuto %d\n", offset);
    return 0;
 }
 

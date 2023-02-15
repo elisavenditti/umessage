@@ -2,8 +2,9 @@
 #define _UMESSAGE_H
 
 #include <linux/version.h>
-#include <linux/spinlock_types.h>
 #include <linux/ioctl.h>
+
+
 
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)
@@ -46,11 +47,13 @@ struct get_args{
 // 	char message[DEFAULT_BLOCK_SIZE - sizeof(int)];
 // };
 
+
+
 struct block_node {
     struct block_node *val_next;        // il primo bit si riferisce alla validità del blocco corrente
                                         // prima di modificare questo valore va impostata la validità corretta
     int num;
-    spinlock_t lock;                    // spin_(un)lock(&queue_lock); 
+    struct mutex lock;                    // mutex_(un)lock(&queue_lock); 
     unsigned long *ctr;
 };
 
@@ -66,6 +69,7 @@ extern char block_device_name[20];
 #define change_validity(ptr)    (struct block_node *)((unsigned long) ptr^(0x8000000000000000))
 #define get_pointer(ptr)        (struct block_node *)((unsigned long) ptr|(0x8000000000000000))
 #define get_validity(ptr)       ((unsigned long) ptr >> (sizeof(unsigned long) * 8 - 1))
+#define offset(val)             val + 2
 
 
 #endif
