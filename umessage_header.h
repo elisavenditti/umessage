@@ -2,6 +2,7 @@
 #define _UMESSAGE_H
 
 #include <linux/version.h>
+#include <linux/spinlock_types.h>
 #include <linux/ioctl.h>
 
 #define MODNAME "MESSAGE KEEPER"
@@ -49,7 +50,7 @@ struct block_node {
     struct block_node *val_next;        // il primo bit si riferisce alla validità del blocco corrente
                                         // prima di modificare questo valore va impostata la validità corretta
     int num;
-    //struct mutex lock;
+    spinlock_t lock;                    // spin_(un)lock(&queue_lock); 
     unsigned long *ctr;
 };
 

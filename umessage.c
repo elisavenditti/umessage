@@ -124,9 +124,8 @@ int init_module(void) {
 
                 block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)
                 block_metadata[k].num = k;
-                //block_metadata[k].lock = NULL;
                 block_metadata[k].ctr = counter;
-                
+                spin_lock_init(&block_metadata[k].lock);
                 
                 if(k==0){
                         printk("puntatore è:                     %px\n", &block_metadata[k]);

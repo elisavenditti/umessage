@@ -10,6 +10,7 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/ioctl.h>
+#include <linux/spinlock_types.h>
 // #include <linux/uaccess.h>          // per la get_user
 // #include "umessage_header.h"
 
@@ -112,6 +113,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
 int dev_put_data(char* source, size_t size){
    
    int i;
+   struct block_node *cas;
    struct block_node *tail;
    struct block_node current_block;
    struct block_node selected_block;
@@ -120,9 +122,10 @@ int dev_put_data(char* source, size_t size){
    for(i=0; i<NBLOCKS; i++){
       
       current_block = block_metadata[i];
+      
       if(get_validity(current_block.val_next) == 0){
-         
          selected_block = current_block;
+         break;
       }
    }
 
@@ -130,11 +133,41 @@ int dev_put_data(char* source, size_t size){
 
    // get the tail of the valid blocks (ordered write)
    tail = valid_messages;
-   while(get_pointer(tail->val_next) != NULL){
-      tail = get_pointer(tail->val_next);
+   
+   if(tail != NULL){
+      while(get_pointer(tail->val_next) != NULL){
+         tail = get_pointer(tail->val_next);
+      }
+      printk("la coda è al blocco: %d\n", tail->num);
    }
-   if(tail == NULL)  printk("la lista è vuota, coda=testa=NULL\n");
-   else              printk("la coda è al blocco: %d\n", tail->num);
+
+   else printk("la lista è vuota, coda=testa=NULL\n");
+   
+
+   // write lock on the selected block
+   spin_unlock(&selected_block.lock);
+
+   
+   selected_block.val_next = change_validity(NULL);                                             // il NULL ha come primo bit 0 (invalido) e bisogna 
+                                                                                                // validarlo prima di inserirlo nei metadati
+   cas = __sync_val_compare_and_swap(&(tail.next), change_validity(NULL), &selected_block);     // ALL OR NOTHING - scambio il campo next della coda (NULL)
+                                                                                                // con il puntatore all'elemento che sto inserendo
+                                                                                                // (ptr nel kernel ha bit a sx = 1, valido). Il bit di validità nel
+                                                                                                // puntatore garantisce il fallimento in caso di interferenze
+
+   if(cas == change_validity(NULL)){
+      // SUCCESSO - ricevo il valore vecchio
+      printk("%s: La CAS ha avuto successo ex_coda.next = %px, &inserted_block = %px\n", MODNAME, change_validity(tail.next), &inserted_block);
+      
+      // TODO - scrivi nel device
+   }
+   else {
+      // FALLIMENTO
+      printk("%s: La CAS ha fallito, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(tail.next), &selected_block);
+   } 
+
+
+   spin_unlock(&selected_block.lock);  
 
 
 
