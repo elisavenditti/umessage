@@ -27,8 +27,8 @@
 #define INVALIDATE_DATA _IOW(MAGIC_UMSG, 3, int)
 
 struct put_args{
-    size_t size;
     char* source;
+    size_t size;
 };
 
 struct get_args{

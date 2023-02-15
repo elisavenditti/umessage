@@ -99,16 +99,10 @@ int main(int argc, char** argv){
 			}
 			printf("device %s successfully opened\n", path0);
 			char source[40] = "ciao sono lucia e sono una sirena";
-			int taglia = strlen(source);
-			printf("sto scrivendo %d byte\n", taglia);
-			
+			int taglia = strlen(source);			
 			struct put_args args;
 			args.source = source;
 			args.size = (size_t)taglia;
-			printf("put_args->size = %d, source=%s\n", args.size, args.source);
-			printf("put_args = %p\n", &args);
-			// int *test = (int *) ((char*)args+sizeof(char*));
-			// printf("put_args->size = %d\n", *int);
 			
 			ioctl(fd, PUT_DATA, &args);
 			break;

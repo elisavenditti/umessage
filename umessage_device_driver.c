@@ -37,12 +37,12 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
    
    // TODO
    long ret;
-   void *args;
+   void* arg;
+   size_t len;
+   char* message;
+   // struct block_device *bdev;
    int minor = get_minor(filp);
    int major = get_major(filp);
-   struct block_device *bdev;
-   
-   
 
 
    AUDIT{
@@ -59,51 +59,34 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
    
    switch(command){
       case PUT_DATA:
-         printk("indirizzo ricevuto in param: %px\n", param);
-         printk("indirizzo ricevuto in param: %s\n", ((struct put_args*)param)->source);
-         struct put_args parg;
-         size_t len;
-         char* message;
-         copy_from_user(&len, (int *)(param), sizeof(int));
-         printk("len is %d\n", len);
-
-         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((struct put_args*)param + sizeof(len)), (char*)((struct put_args*)param + sizeof(len)));
-         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((struct put_args*)param + sizeof(size_t)), (char*)((struct put_args*)param + sizeof(len)));
-         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((int*)param + sizeof(len)), (char*)((struct put_args*)param + sizeof(len)));
-         printk("l'indirizzo del buffer è: %ul e c'è %s\n", ((int*)param + sizeof(size_t)), (char*)((struct put_args*)param + sizeof(len)));
-         copy_from_user(message, &(((struct put_args*)param)->source), len);//(char *)((int*)param + 1), len);
-         printk("msg is %s\n", message);
-
-
-         // if (copy_from_user(&parg, (void *)param, sizeof(parg)))
-         //    return -EFAULT;
-
-         // char *buf = kmalloc(parg.size, GFP_KERNEL);
-         // if (!buf)
-         //    return -ENOMEM;
-
-         // if (copy_from_user(buf, parg.source, parg.size)) {
-         //    kfree(buf);
-         //    return -EFAULT;
-         // }
-
-      
-         // printk("ho ricevuto %s, %d\n", ((struct put_args *)args)->source, ((struct put_args *)args)->size);
-
-
-     
-         //get_user(len, (int *)((char *)param + sizeof(char*)));
-         //get_user(&len, (int *)((char*)param+sizeof(char*)));//, sizeof(size_t));
-         // ret = copy_from_user(buffer,buff,len);
-         //printk("size is: %d\n", len);
-
-         // copy_from_user(source, (char *) param, len);
-         // printk(KERN_INFO "4");
-         // source[len] = '\0';
-         // printk(KERN_INFO "%s: valore da inserire: %s", MODNAME, source);
-
          
-         //ret = dev_put_data(((struct put_args *) param)->source, ((struct put_args *) param) ->size);
+         // 1. prendere parametri dall'utente
+         // alloco dinamicamente l'area di memoria per ospitare la struttura put_args, poi la popolo
+         arg = kmalloc(sizeof(struct put_args), GFP_KERNEL);
+         if(!arg){
+            printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
+            return -1;
+         }
+
+         ret = copy_from_user(arg, (void *) param, sizeof(struct put_args));
+         len = ((struct put_args*)arg)->size;
+         
+         
+         // alloco dinamicamente l'area di memoria per ospitare il messaggio, poi lo copio dallo spazio utente
+         message = kmalloc(len+1, GFP_KERNEL);
+         if (!message){
+            printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);
+            return -ENOMEM;
+         }
+
+         ret = copy_from_user(message, ((struct put_args*)arg)->source, len);
+         message[len+1] = '\0';
+         ((struct put_args*)arg)->source = message;
+         
+         printk("message: %s, len: %lu\n", message, ((struct put_args*)arg)->size);
+
+         // 2. logica di inserimento di un messaggio
+         ret = dev_put_data(((struct put_args *) arg)->source, ((struct put_args *) arg)->size);
          break;
       case GET_DATA:
          // ret = ...
@@ -126,7 +109,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
 
 // PUT DATA
 
-int dev_put_data(char* source, size_t size/*struct put_arg *arg*/){
+int dev_put_data(char* source, size_t size){
    
    int i;
    struct block_node *tail;
