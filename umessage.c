@@ -122,25 +122,26 @@ int init_module(void) {
                         printk("%s: kmalloc error, can't allocate memory needed to manage user messages (counter)\n",MODNAME);
                         return -1;
                 }
-
+                *counter = 0;
                 block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)
                 block_metadata[k].num = k;
                 block_metadata[k].ctr = counter;
                 mutex_init(&block_metadata[k].lock);
                 
-                if(k==0){
-                        printk("puntatore è:                     %px\n", &block_metadata[k]);
-                        printk("puntatore con bit invalidato è:  %px\n", change_validity(&block_metadata[k]));
-                        printk("puntatore con bit val dopo inv:  %px\n", change_validity(change_validity(&block_metadata[k])));
-                        printk("puntatore ricavato da ptr puro:  %px\n", get_pointer(&block_metadata[k]));
-                        printk("puntatore ricavato da ptr val:   %px\n", get_pointer(change_validity(change_validity(&block_metadata[k]))));
-                        printk("puntatore ricavato da ptr inval: %px\n", get_pointer(change_validity(&block_metadata[k])));
-                        printk("validità ptr:                    %lu\n", get_validity(&block_metadata[k]));
-                        printk("validità ptr invalido:           %lu\n", get_validity(change_validity(&block_metadata[k])));
-                        printk("validità ptr valido:             %lu\n", get_validity(change_validity(change_validity(&block_metadata[k]))));
-                        printk("validità ptr null:               %lu\n", get_validity(NULL));
+                // if(k==0){
+                //         printk("puntatore è:                     %px\n", &block_metadata[k]);
+                //         printk("puntatore con bit invalidato è:  %px\n", change_validity(&block_metadata[k]));
+                //         printk("puntatore con bit val dopo inv:  %px\n", change_validity(change_validity(&block_metadata[k])));
+                //         printk("puntatore ricavato da ptr puro:  %px\n", get_pointer(&block_metadata[k]));
+                //         printk("puntatore ricavato da ptr val:   %px\n", get_pointer(change_validity(change_validity(&block_metadata[k]))));
+                //         printk("puntatore ricavato da ptr inval: %px\n", get_pointer(change_validity(&block_metadata[k])));
+                //         printk("validità ptr:                    %lu\n", get_validity(&block_metadata[k]));
+                //         printk("validità ptr invalido:           %lu\n", get_validity(change_validity(&block_metadata[k])));
+                //         printk("validità ptr valido:             %lu\n", get_validity(change_validity(change_validity(&block_metadata[k]))));
+                //         printk("validità ptr null:               %lu\n", get_validity(NULL));
                         
-                }
+                // }
+                printk("ctr blocco %d inizializzato a %lu\n", k, *(block_metadata[k].ctr));
         }
 
 
@@ -153,7 +154,7 @@ int init_module(void) {
 
         head->val_next = change_validity(NULL);
         head->num = -1;
-        head->ctr = 0;
+        head->ctr = NULL;
         mutex_init(&head->lock);
         printk("chg validity NULL               = %px\n", change_validity(NULL));
         printk("get_pointer(NULL)               = %px\n", get_pointer(NULL));

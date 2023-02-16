@@ -1,1 +1,0 @@
-cmd_/home/elisa/Scrivania/umessage/umessage_module.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/elisa/Scrivania/umessage/umessage_module.ko /home/elisa/Scrivania/umessage/umessage_module.o /home/elisa/Scrivania/umessage/umessage_module.mod.o;  true
