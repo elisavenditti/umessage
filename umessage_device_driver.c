@@ -25,7 +25,6 @@ int            dev_put_data(char *, size_t);
 int            dev_invalidate_data(int);
 int            dev_get_data(int, char *, size_t);
 
-
 static int Major;
 struct block_device *bdev;
 // static DEFINE_MUTEX(device_state);
@@ -344,7 +343,6 @@ static int dev_open(struct inode *inode, struct file *file) {
 	// 	return -EBUSY;
    // }
 
-
    printk(KERN_INFO "%s: device file successfully opened by thread %d\n",MODNAME,current->pid);
    printk("%s: TODO vedi se introdurre sincronizzazione\n",MODNAME);
    //device opened by a default nop
@@ -375,7 +373,10 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    // LETTURA DI TUTTI I BLOCCHI IN ORDINE
 
    int ret; 
-   int lenght;  
+   int lenght;
+   int copied;
+   char* temp_buf;
+   char termination;  
    int block_to_read;
    int minor = get_minor(filp);
    int major = get_major(filp);
@@ -387,10 +388,8 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    struct block_node *selected_block = NULL;
 
 
-   // block_to_read = minor + 2;             // the value 2 accounts for superblock and file-inode on device
-
    AUDIT{
-      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d]\n",MODNAME, major, minor);
+      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %d\n",MODNAME, major, minor, len);
       printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
    }
 
@@ -412,42 +411,63 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
 
    // get the first element to read: the block pointed by the HEAD
    curr = valid_messages;
-   printk("curr->next=%px\n", curr->val_next);
-   if(get_pointer(curr->val_next) != change_validity(NULL)){
-      
-      curr = get_pointer(curr->val_next);
-      printk("(blocco:%d) prima posizione\n", curr->num);
-      printk(" CTR vecchio valore: %lu\n", *(curr->ctr));   
-      __sync_fetch_and_add(curr->ctr,1);
-      printk(" CTR nuovo valore: %lu\n", *(curr->ctr));
-      block_to_read = offset(curr->num);
-
-   }
-   len = 0;
-   // iterate for each valid element until the last one with NULL (but valid) pointer to next
-   // while(get_pointer(curr->val_next) != change_validity(NULL)){       
+   next = get_pointer(curr->val_next);
    
-   while(curr != change_validity(NULL)){      
-      if(curr == NULL) printk("ERA NULL\n");
-      if(curr == change_validity(NULL)) printk("ERA CHANGE_VALIDITY(NULL)\n");      
+   if(next == change_validity(NULL)){
+      // no valid elements (HEAD->next is NULL), just return
+      blkdev_put(bdev, FMODE_READ);
+      return 0;
+   }
+
+   // there is at least one valid element, signal the presence of reader on this element
+     
+   printk("(blocco:%d) prima posizione\n", next->num);
+   printk(" CTR vecchio valore: %lu\n", *(next->ctr));   
+   __sync_fetch_and_add(next->ctr,1);
+   printk(" CTR nuovo valore: %lu\n", *(next->ctr));
+   
+   
+   block_to_read = offset(next->num);
+   copied = 0;
+   termination = '\n';
+
+   // iterate on the blocks until the next is NULL
+   while(next != change_validity(NULL)){      
+      
+      curr = next;
+      next = get_pointer(curr->val_next);
+      
       // get cached data
       bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
       if(!bh){
          return -EIO;
       }
-      if (bh->b_data != NULL)
-         AUDIT printk(KERN_INFO " data: %s\n", bh->b_data);
+      if (bh->b_data == NULL) continue;
+      
+      AUDIT printk(KERN_INFO " data: %s\n", bh->b_data);
 
+      lenght = strlen(bh->b_data);
+
+      // allocate the buffer in order to modify the message with the termination character
+      temp_buf = kmalloc(lenght+1, GFP_KERNEL);
+      if(!temp_buf){
+         printk("%s: kmalloc error, unable to allocate memory for read messages as single file\n", MODNAME);
+      }
+
+      strncpy(temp_buf, bh->b_data, lenght);
+      // if(next == change_validity(NULL)) temp_buf[lenght] = '\0';
+      // else temp_buf[lenght] = '\n';
+      if(next == change_validity(NULL)) termination = '\0';
+      temp_buf[lenght] = termination;
       
+      ret = copy_to_user(buff+copied, temp_buf, strlen(bh->b_data)+1);
+      printk("ho copiato %d bytes: %s\n",lenght, buff);
+      copied = copied + lenght + 1;
       
-      // ritorna il numero di byte che non ha potuto copiare
-      ret = copy_to_user(buff+lenght, bh->b_data, strlen(bh->b_data));
-      lenght = lenght + strlen(bh->b_data);
-      
-      next = get_pointer(curr->val_next);
+      // next = get_pointer(curr->val_next);
       if(next != change_validity(NULL)){
+         
          block_to_read = offset(next->num);
-         printk(" next block:%d\n", block_to_read);
          printk("(blocco:%d)\n", next->num);
       
          // riservo contatore per il prossimo blocco
@@ -455,26 +475,16 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          __sync_fetch_and_add(next->ctr,1);
          printk(" CTR nuovo valore: %lu\n", *(next->ctr));
 
-         // rilascio contatore blocco corrente
-         __sync_fetch_and_sub(curr->ctr,1);
-         printk(" CTR reset al valore: %lu\n", *(curr->ctr));
       }
-      
+      // rilascio contatore blocco corrente
+      __sync_fetch_and_sub(curr->ctr,1);
+      printk(" CTR reset al valore: %lu\n", *(curr->ctr));   
       brelse(bh);
-      
-      // go to next block
-      curr = next;
    }
 
-   
-   // rilascio contatore ultimo blocco, se la lista non era vuota
-   // if(get_pointer(curr != change_validity(NULL)){
-   //    __sync_fetch_and_sub(curr->ctr,1);
-   //    printk(" CTR reset al valore: %lu\n", *(curr->ctr));
-   //    printk("l'ultimo elemento valido è il blocco: %d\n", curr->num);
-   // }
+   kfree(temp_buf);
    blkdev_put(bdev, FMODE_READ);
-   return 0;
+   return len;
    
 }
 
