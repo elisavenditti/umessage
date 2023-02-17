@@ -150,7 +150,6 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
 int dev_put_data(char* source, size_t size){
    
    int i;
-   // int found;
    int block_to_write;
    struct block_node *cas;
    struct block_node *tail;
@@ -185,6 +184,10 @@ int dev_put_data(char* source, size_t size){
    
    while(get_pointer(tail->val_next) != change_validity(NULL)){       // l'ultimo nella lista avrà puntatore a NULL ma valido
       tail = get_pointer(tail->val_next);
+      if(tail->val_next == NULL){
+         printk("%s: not able to find the tail due to concurrency, retry\n", MODNAME);
+         return -1;
+      }
    }
    printk("la coda è al blocco: %d\n", tail->num);
    
@@ -193,7 +196,7 @@ int dev_put_data(char* source, size_t size){
    // write lock on the selected block
    mutex_lock(&(selected_block->lock));
    
-   selected_block->val_next = change_validity(NULL);                                                // Il NULL ha come primo bit 0 (invalido) e bisogna 
+   selected_block->val_next = change_validity(NULL);                                               // Il NULL ha come primo bit 0 (invalido) e bisogna 
                                                                                                    // validarlo prima di inserirlo nei metadati.
    printk("ora il blocco selezionato ha val_next: %px\n", selected_block->val_next);
    cas = __sync_val_compare_and_swap(&(tail->val_next), change_validity(NULL), selected_block);    // ALL OR NOTHING - scambio il campo next della coda (NULL)
@@ -203,7 +206,7 @@ int dev_put_data(char* source, size_t size){
 
    if(cas != change_validity(NULL)){
       // FALLIMENTO
-      printk("%s: La CAS ha fallito, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(tail->val_next), selected_block);
+      printk("%s: La CAS è fallita, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(tail->val_next), selected_block);
       mutex_unlock(&(selected_block->lock));
       return -1;
    }
@@ -256,6 +259,7 @@ int dev_put_data(char* source, size_t size){
    return DEFAULT_BLOCK_SIZE;
 
 }
+
 
 
 
@@ -324,11 +328,250 @@ int dev_get_data(int offset, char * destination, size_t size){
 
 }
 
+
+
+
+
 // INVALIDATE DATA
 
 int dev_invalidate_data(int offset){
-   printk("ho ricevuto %d\n", offset);
+   printk("INVALIDATE DATA\n");
+
+   int i;
+   int block_to_write;
+   struct block_node *cas;
+   struct block_node *next;
+   struct block_node *selected;
+   struct block_node *predecessor;
+   
+   unsigned long *cas_counter;
+   unsigned long *old_counter;
+   unsigned long *counter = NULL;
+
+
+   selected = &block_metadata[offset];
+
+   // if the block is already invalid there is nothing to do   
+   if(get_validity(selected->val_next) == 0){
+      AUDIT printk("%s: the block %d is already invalid, nothing to do\n", MODNAME, offset);
+      return 0;
+   }
+   
+   
+   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
+      printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
+      return -1;                          // return ENODEV ? settare ERRNO ?
+   }
+   
+
+   predecessor = valid_messages;
+   next = get_pointer(selected->val_next);
+
+   // get the predecessor of the block to invalidate
+   while(get_pointer(predecessor->val_next) != &block_metadata[offset]){
+      printk("sono il blocco: %d\n", predecessor->num);
+      predecessor = get_pointer(predecessor->val_next);
+   }
+   printk("il predecessore è al blocco: %d\n", predecessor->num);
+
+
+   // need 2 write locks!
+   mutex_lock(&(selected->lock));
+   if(next != change_validity(NULL))
+      mutex_lock(&(next->lock));
+   
+
+   // invalido il blocco
+   selected->val_next = change_validity(selected->val_next);                                               
+   AUDIT printk("ora il blocco selezionato ha val_next: %px\n", selected->val_next);
+
+   // sgancio l'elemento               DOVE                 COSA C'ERA              COSA CI METTO
+   // cas = __sync_val_compare_and_swap(&(selected->val_next), change_validity(NULL), selected_block);    
+   cas = __sync_val_compare_and_swap(&(predecessor->val_next), predecessor->val_next, change_validity(selected->val_next));    
+   
+
+   if(cas == change_validity(selected->val_next)){
+      // FALLIMENTO - ricevo il valore che volevo inserire
+      printk("%s: La CAS è fallita, valore trovato: %px - valore atteso: %px\n", MODNAME, predecessor->val_next, change_validity(selected->val_next));
+      if(next != change_validity(NULL)) mutex_unlock(&(next->lock));
+      mutex_unlock(&(selected->lock));
+      return -1;
+   }
+   
+
+   // SUCCESSO - ricevo il valore vecchio
+   printk("%s: La CAS ha avuto successo prev.next = %px, invalidated.next = %px\n", MODNAME, predecessor->val_next, selected->val_next);
+      
+      
+   // allocare il nuovo contatore
+
+   counter = (unsigned long *) kmalloc(sizeof(unsigned long), GFP_KERNEL);
+   printk("kmalloc done");
+   if(counter == NULL){
+      printk("%s: kmalloc error, can't allocate memory needed to create new counter to redirect readers\n",MODNAME);
+      return -1;
+   }
+   *counter = 0;
+   printk("new ctr ok");
+
+
+   // spostare il contatore da quello vecchio a quello nuovo
+   cas_counter = __sync_val_compare_and_swap(&(selected->ctr), selected->ctr, counter);    
+   printk("new cas");   
+
+   if(cas_counter == counter){
+      // FALLIMENTO - ricevo il valore che volevo inserire
+      printk("%s: La CAS è fallita, valore trovato: %px - valore atteso: %px\n", MODNAME, selected->ctr, counter);
+      if(next != change_validity(NULL)) mutex_unlock(&(next->lock));
+      mutex_unlock(&(selected->lock));
+      return -1;
+   }
+   
+
+   // SUCCESSO - ricevo il valore vecchio
+   printk("%s: La CAS ha avuto successo block->counter = %px, allocated_counter = %px\n", MODNAME, selected->ctr, counter);
+   
+
+   // while(*cas_counter != 0){
+   //    printk("CTR (blocco %d) = %d\n", offset, *cas_counter);
+   DECLARE_WAIT_QUEUE_HEAD(wqueue);
+   wait_event_interruptible(wqueue, *(cas_counter) == 0);
+
+   printk("ho finito");
+
+   if(next != change_validity(NULL)) mutex_unlock(&(next->lock));
+   mutex_unlock(&(selected->lock));  
+
+
+
    return 0;
+}
+
+
+
+
+
+// READ - FILE OPERATION
+
+static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
+
+   // LETTURA DI TUTTI I BLOCCHI IN ORDINE
+
+   int ret; 
+   int lenght;
+   int copied;
+   char* temp_buf;
+   char termination;  
+   int block_to_read;
+   struct block_node *next;
+   struct block_node *curr;
+   struct block_device *bdev;
+   int minor = get_minor(filp);
+   int major = get_major(filp);
+   struct buffer_head *bh = NULL;
+
+
+   AUDIT{
+      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %d\n",MODNAME, major, minor, len);
+      printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
+   }
+
+   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
+      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
+      return -1;                          // return ENODEV ?
+   }
+
+   // get the block device in order to reach cached data
+
+   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
+
+   if(bdev == NULL){
+      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
+      return -1;                          // return ENODEV ?
+   }
+
+
+   // get the first element to read: the block pointed by the HEAD
+
+   curr = valid_messages;
+   next = get_pointer(curr->val_next);
+   
+   if(next == change_validity(NULL)){
+      // no valid elements (HEAD->next is NULL), just return
+      blkdev_put(bdev, FMODE_READ);
+      return 0;
+   }
+
+   // there is at least one valid element, signal the presence of reader on this element
+     
+   AUDIT printk("(blocco:%d) prima posizione\n CTR vecchio valore: %lu\n", next->num, *(next->ctr));
+   __sync_fetch_and_add(next->ctr,1);
+   AUDIT printk(" CTR nuovo valore: %lu\n", *(next->ctr));
+   
+   
+   copied = 0;
+   termination = '\n';
+   block_to_read = offset(next->num);
+
+
+   // iterate on the blocks until the next is NULL
+   
+   while(next != change_validity(NULL)){      
+      
+      curr = next;
+      next = get_pointer(curr->val_next);
+      
+      // get cached data
+      bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
+
+      if(!bh){
+         return -EIO;
+      }
+      if (bh->b_data == NULL) continue;
+      
+      lenght = strlen(bh->b_data);
+      AUDIT printk(KERN_INFO " data: %s\n", bh->b_data);
+
+
+      // allocate and use the temp buffer in order to modify 
+      // the retrieved message with the termination character
+
+      temp_buf = kmalloc(lenght+1, GFP_KERNEL);
+      if(!temp_buf){
+         printk("%s: kmalloc error, unable to allocate memory for read messages as single file\n", MODNAME);
+         return -1;
+      }
+
+      strncpy(temp_buf, bh->b_data, lenght);
+      
+      if(next == change_validity(NULL)) termination = '\0';
+      temp_buf[lenght] = termination;
+      
+      ret = copy_to_user(buff + copied, temp_buf, strlen(bh->b_data)+1);
+      copied = copied + lenght + 1 - ret;
+      
+      if(next != change_validity(NULL)){
+         
+         // signal the presence of reader on the NEXT element
+         block_to_read = offset(next->num);
+         AUDIT printk("(blocco:%d) CTR vecchio valore: %lu\n\n", next->num, *(next->ctr));
+         __sync_fetch_and_add(next->ctr,1);
+         AUDIT printk(" CTR nuovo valore: %lu\n", *(next->ctr));
+
+      }
+
+      // release the presence counter for the current block
+
+      __sync_fetch_and_sub(curr->ctr,1);
+      AUDIT printk(" CTR reset al valore: %lu\n", *(curr->ctr));   
+      brelse(bh);
+
+   }
+
+   kfree(temp_buf);
+   blkdev_put(bdev, FMODE_READ);
+   return len;
+   
 }
 
 
@@ -366,223 +609,99 @@ static int dev_release(struct inode *inode, struct file *file) {
 
 
 
-// READ - FILE OPERATION
-
-static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
-
-   // LETTURA DI TUTTI I BLOCCHI IN ORDINE
-
-   int ret; 
-   int lenght;
-   int copied;
-   char* temp_buf;
-   char termination;  
-   int block_to_read;
-   int minor = get_minor(filp);
-   int major = get_major(filp);
-   struct buffer_head *bh = NULL;
-   struct block_device *bdev;
-
-   struct block_node *next;
-   struct block_node *curr;
-   struct block_node *selected_block = NULL;
-
-
-   AUDIT{
-      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %d\n",MODNAME, major, minor, len);
-      printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
-   }
-
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
-      return -1;                          // return ENODEV ?
-   }
-
-   // get the block device in order to reach cached data
-   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
-   
-   if(bdev == NULL){
-      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
-      return -1;                          // return ENODEV ?
-   }
-
-   
-
-
-   // get the first element to read: the block pointed by the HEAD
-   curr = valid_messages;
-   next = get_pointer(curr->val_next);
-   
-   if(next == change_validity(NULL)){
-      // no valid elements (HEAD->next is NULL), just return
-      blkdev_put(bdev, FMODE_READ);
-      return 0;
-   }
-
-   // there is at least one valid element, signal the presence of reader on this element
-     
-   printk("(blocco:%d) prima posizione\n", next->num);
-   printk(" CTR vecchio valore: %lu\n", *(next->ctr));   
-   __sync_fetch_and_add(next->ctr,1);
-   printk(" CTR nuovo valore: %lu\n", *(next->ctr));
-   
-   
-   block_to_read = offset(next->num);
-   copied = 0;
-   termination = '\n';
-
-   // iterate on the blocks until the next is NULL
-   while(next != change_validity(NULL)){      
-      
-      curr = next;
-      next = get_pointer(curr->val_next);
-      
-      // get cached data
-      bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
-      if(!bh){
-         return -EIO;
-      }
-      if (bh->b_data == NULL) continue;
-      
-      AUDIT printk(KERN_INFO " data: %s\n", bh->b_data);
-
-      lenght = strlen(bh->b_data);
-
-      // allocate the buffer in order to modify the message with the termination character
-      temp_buf = kmalloc(lenght+1, GFP_KERNEL);
-      if(!temp_buf){
-         printk("%s: kmalloc error, unable to allocate memory for read messages as single file\n", MODNAME);
-      }
-
-      strncpy(temp_buf, bh->b_data, lenght);
-      // if(next == change_validity(NULL)) temp_buf[lenght] = '\0';
-      // else temp_buf[lenght] = '\n';
-      if(next == change_validity(NULL)) termination = '\0';
-      temp_buf[lenght] = termination;
-      
-      ret = copy_to_user(buff+copied, temp_buf, strlen(bh->b_data)+1);
-      printk("ho copiato %d bytes: %s\n",lenght, buff);
-      copied = copied + lenght + 1;
-      
-      // next = get_pointer(curr->val_next);
-      if(next != change_validity(NULL)){
-         
-         block_to_read = offset(next->num);
-         printk("(blocco:%d)\n", next->num);
-      
-         // riservo contatore per il prossimo blocco
-         printk(" CTR vecchio valore: %lu\n", *(next->ctr));   
-         __sync_fetch_and_add(next->ctr,1);
-         printk(" CTR nuovo valore: %lu\n", *(next->ctr));
-
-      }
-      // rilascio contatore blocco corrente
-      __sync_fetch_and_sub(curr->ctr,1);
-      printk(" CTR reset al valore: %lu\n", *(curr->ctr));   
-      brelse(bh);
-   }
-
-   kfree(temp_buf);
-   blkdev_put(bdev, FMODE_READ);
-   return len;
-   
-}
-
-
-
 // WRITE - DA TOGLIEREEEEEEEEEEEEEEEEEEEEEEE
 
-static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
+// static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
 
 
-   // SCRITTURA DI UN BLOCCO DEL BLOCK DEVICE - sovrascrive completamente il blocco
+//    // SCRITTURA DI UN BLOCCO DEL BLOCK DEVICE - sovrascrive completamente il blocco
 
-   int ret;
-   char* cas;
-   char* message;
-   char* old_message;   
-   int block_to_write;
-   int minor = get_minor(filp);
-   int major = get_major(filp);
-   struct buffer_head *bh = NULL;
-   struct block_device *bdev;
+//    int ret;
+//    char* cas;
+//    char* message;
+//    char* old_message;   
+//    int block_to_write;
+//    int minor = get_minor(filp);
+//    int major = get_major(filp);
+//    struct buffer_head *bh = NULL;
+//    struct block_device *bdev;
 
 
-   block_to_write = minor + 2;             // the value 2 accounts for superblock and file-inode on device
+//    block_to_write = minor + 2;             // the value 2 accounts for superblock and file-inode on device
 
-   AUDIT{
-      printk(KERN_INFO "%s: somebody called a write on dev with [major,minor] number [%d,%d] so the block to access is minor+2 = %d\n",MODNAME,major, minor, block_to_write);
-      printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
-   }
+//    AUDIT{
+//       printk(KERN_INFO "%s: somebody called a write on dev with [major,minor] number [%d,%d] so the block to access is minor+2 = %d\n",MODNAME,major, minor, block_to_write);
+//       printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
+//    }
 
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
-      return -1;                          // return ENODEV ? settare ERRNO ?
-   }
+//    if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
+//       printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
+//       return -1;                          // return ENODEV ? settare ERRNO ?
+//    }
 
-   // get the block device in order to reach cached data
-   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
+//    // get the block device in order to reach cached data
+//    bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
    
-   if(bdev == NULL){
-      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
-      return -1;                          // return ENODEV ?
-   }
+//    if(bdev == NULL){
+//       printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
+//       return -1;                          // return ENODEV ?
+//    }
 
 
-   // valore da inserire
+//    // valore da inserire
 	
-   message = (char*) kmalloc(DEFAULT_BLOCK_SIZE, GFP_KERNEL);
-	if(message == NULL){
-		printk("%s: kmalloc error, unable to allocate memory for receiving the user message\n",MODNAME);
-		return -1;
-	}
+//    message = (char*) kmalloc(DEFAULT_BLOCK_SIZE, GFP_KERNEL);
+// 	if(message == NULL){
+// 		printk("%s: kmalloc error, unable to allocate memory for receiving the user message\n",MODNAME);
+// 		return -1;
+// 	}
 
-	ret = copy_from_user(message, buff, len);
-	message[len]='\0';
-	printk(KERN_INFO "%s: [blocco %d] valore da inserire: %s", MODNAME, block_to_write, message);
+// 	ret = copy_from_user(message, buff, len);
+// 	message[len]='\0';
+// 	printk(KERN_INFO "%s: [blocco %d] valore da inserire: %s", MODNAME, block_to_write, message);
 
 
 
-   // prendo i dati da aggiornare
+//    // prendo i dati da aggiornare
 
-   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_write);
-   if(!bh){
-      return -EIO;
-   }
-   if (bh->b_data != NULL){      // e se è null che succede?
+//    bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_write);
+//    if(!bh){
+//       return -EIO;
+//    }
+//    if (bh->b_data != NULL){      // e se è null che succede?
       
-      old_message = bh->b_data;
-      AUDIT printk(KERN_INFO "%s: [blocco %d] valore vecchio: %s\n", MODNAME, block_to_write, bh->b_data);
+//       old_message = bh->b_data;
+//       AUDIT printk(KERN_INFO "%s: [blocco %d] valore vecchio: %s\n", MODNAME, block_to_write, bh->b_data);
    
-   }
+//    }
 
    
-   // aggiornamento atomico
+//    // aggiornamento atomico
 
-   cas = __sync_val_compare_and_swap(&(bh->b_data), old_message, message);
+//    cas = __sync_val_compare_and_swap(&(bh->b_data), old_message, message);
 
-   if(strncmp(cas, old_message, strlen(old_message)) == 0){
-      // ha avuto successo
-      printk("%s: La CAS ha avuto successo bh->b_data = %s\n", MODNAME, bh->b_data);
-   }
-   else {
-      // fallimento
-      printk("%s: La CAS ha fallito, valore trovato: %s - valore atteso: %s\n", MODNAME, cas, old_message);
-   } 
+//    if(strncmp(cas, old_message, strlen(old_message)) == 0){
+//       // ha avuto successo
+//       printk("%s: La CAS ha avuto successo bh->b_data = %s\n", MODNAME, bh->b_data);
+//    }
+//    else {
+//       // fallimento
+//       printk("%s: La CAS ha fallito, valore trovato: %s - valore atteso: %s\n", MODNAME, cas, old_message);
+//    } 
    
    
-   brelse(bh);
-   blkdev_put(bdev, FMODE_READ);
+//    brelse(bh);
+//    blkdev_put(bdev, FMODE_READ);
 
-   return DEFAULT_BLOCK_SIZE;
+//    return DEFAULT_BLOCK_SIZE;
    
 
-}
+// }
 
 
 
 static struct file_operations fops = {
-  .write = dev_write,
+//   .write = dev_write,
   .read = dev_read,
   .open =  dev_open,
   .release = dev_release,

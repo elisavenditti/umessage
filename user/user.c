@@ -51,9 +51,9 @@ int main(int argc, char** argv){
 
 		case 'I':
 			// invalidate data
-
-			int num = 1;
-			ioctl(fd, INVALIDATE_DATA, &num);
+			if(argc<4) goto error_params;
+			arg = strtol(argv[3],NULL,10);
+			ioctl(fd, INVALIDATE_DATA, &arg);
 			// arg = strtol(argv[2],NULL,10);
 			// ret = syscall(INVALIDATE, arg);
 			break;
@@ -63,7 +63,6 @@ int main(int argc, char** argv){
 			// put data
 			if(argc<4) goto error_params;
 			arg = strtol(argv[3],NULL,10);
-			// char source[40] = "ciao sono lucia e sono una sirena";
 			printf("%s",contenuti[arg]);
 			int taglia = strlen(contenuti[arg]);			
 			struct put_args args;

@@ -54,9 +54,9 @@ int init_module(void) {
         int k;
         int ret;
         int ret2;
-        unsigned long *counter = NULL;
         struct block_node *head;
-
+        unsigned long *counter = NULL;
+        
 	AUDIT{
 	   printk(KERN_INFO "%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
      	   printk(KERN_INFO "%s: initializing - hacked entries %d\n",MODNAME,HACKED_ENTRIES);
