@@ -9,6 +9,7 @@
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)
 #define DEVICE_NAME "umessage"  /* Device file name in /dev/ - not mandatory  */
+#define DEV_NAME "/dev/umessage"
 #define DEFAULT_BLOCK_SIZE 4096
 #define NBLOCKS 10
 
@@ -59,6 +60,7 @@ struct block_node {
 
 extern struct block_node block_metadata[NBLOCKS];
 extern struct block_node* valid_messages;
+extern int Major;
 
 
 //block device to contact in order to get data - it is initialized when the FS is mounted

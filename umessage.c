@@ -44,6 +44,8 @@ module_param(the_syscall_table, ulong, 0660);
 
 struct block_node block_metadata[NBLOCKS];
 struct block_node* valid_messages;
+struct class *cl;
+struct device *device;
 
 
 // FUNZIONI DI STARTUP E SHUTDOWN DEL MODULO
@@ -95,7 +97,11 @@ int init_module(void) {
 
 	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
+        dev_t dev = MKDEV(Major, 0);
+        struct class *cl = class_create(THIS_MODULE, "umessage_class");
+        struct device *device = device_create(cl, NULL, dev, NULL, DEVICE_NAME);
 
+        printk(KERN_INFO "%s: device file created\n",MODNAME);
 
         // registrazione del filesystem
 
@@ -156,9 +162,10 @@ int init_module(void) {
         head->num = -1;
         head->ctr = NULL;
         mutex_init(&head->lock);
-        printk("chg validity NULL               = %px\n", change_validity(NULL));
-        printk("get_pointer(NULL)               = %px\n", get_pointer(NULL));
-        
+        printk("chg validity NULL                       = %px\n", change_validity(NULL));
+        printk("get_pointer(NULL)                       = %px\n", get_pointer(NULL));
+        printk("chg validity (chg validity NULL)        = %px\n", change_validity(change_validity(NULL)));
+        printk("get_pointer  (chg validity NULL)        = %px\n", get_pointer(change_validity(NULL)));
         valid_messages = head;
         return 0;
 
@@ -182,9 +189,14 @@ void cleanup_module(void) {
 
         // eliminazione del device driver
         
+        
         unregister_chrdev(Major, DEVICE_NAME);
-	printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
-
+	device_destroy(cl, MKDEV(Major, 0));
+        class_destroy(cl);
+        
+        printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
+        
+        
 
         // eliminazione del filesystem
         ret = unregister_filesystem(&onefilefs_type);

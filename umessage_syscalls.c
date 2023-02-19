@@ -20,7 +20,7 @@
 #include <asm/apic.h>
 #include <asm/io.h>
 #include <linux/syscalls.h>
-// #include "umessage_header.h"
+
 
 
 // DEFINIZIONI UTILI
@@ -41,9 +41,42 @@ __SYSCALL_DEFINEx(1, _invalidate_data, int, offset){
 #else
 asmlinkage int sys_invalidate_data(int offset){
 #endif
-       
+    
+	int ret;
+	int* arg;
+	struct file *filp;
+	
 	AUDIT
-	printk("%s: invocation of invalidate_data with offset=%d\n",MODNAME, offset);
+	printk("%s: invocation of sys_invalidate_data\n",MODNAME);
+
+	arg = kmalloc(sizeof(int), GFP_KERNEL);
+    if(!arg){
+        printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n", MODNAME);
+        return -1;
+    }
+
+    ret = copy_from_user(arg, &offset, sizeof(int));        
+    printk("block to invalidate is: %d\n", *(arg));
+
+	// printk("block to invalidate is: %d\n", offset);
+    
+
+	// apro il device file
+
+	printk("opening device %s\n", DEV_NAME);
+	
+	filp = filp_open(DEV_NAME, O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		printk("error in filp open");
+		return -1;
+	}
+	printk("device file opened");
+
+	
+	
+	vfs_ioctl(filp, INVALIDATE_DATA, arg);	
+	
+	filp_close(filp, NULL);		
 	return 0;
 }
 
@@ -57,19 +90,58 @@ asmlinkage int sys_put_data(char* source, size_t size){
 #endif
         
 
-        int ret;
-	char* user_message;		//char user_message[128];
-	user_message = (char*) kmalloc(size+1, GFP_KERNEL);
-	if(user_message == NULL){
-		printk("%s: kmalloc error, null returned\n",MODNAME);
-		return 0;
-	}
-	ret = copy_from_user(user_message, source, size);
-	user_message[size]='\0';
+    
+	printk("%s: invocation of sys_put_data\n",MODNAME);
+
+
+	int ret;
+	char* message;
+	struct file *filp;
+	struct put_args *args;
+
+	// TODO controlla se è montato il file-system !
+
+	args = kmalloc(sizeof(struct put_args), GFP_KERNEL);
+    if(!args){
+    	printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
+        return -1;
+    }
+
+    
+    // alloco dinamicamente l'area di memoria per ospitare il messaggio, poi lo copio dallo spazio utente
+    message = kmalloc(size+1, GFP_KERNEL);
+    if (!message){
+    	printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);
+        return -ENOMEM;
+    }
+
+    ret = copy_from_user(message, source, size);
+    message[size] = '\0';
+
+
+    args->source = message;
+	args->size = size + 1;		// the insertion must include '/0'
+	     
+    printk("message: %s, len: %lu\n", message, ((struct put_args*)args)->size);
+
+
+	// apro il device file
+
+	printk("opening device %s\n", DEV_NAME);
 	
-       
-	AUDIT
-	printk("%s: invocation of put_data with data=%s of size=%ld\n",MODNAME, user_message, size);
+	filp = filp_open(DEV_NAME, O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		printk("error in filp open");
+		return -1;
+	}
+	printk("device file opened");
+
+	
+	// args.source = source;
+	// args.size = size;
+	vfs_ioctl(filp, PUT_DATA, args);	
+	
+	filp_close(filp, NULL);		
 	return 0;
 }
 
@@ -84,7 +156,45 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 
 
 	AUDIT
-	printk("%s: invocation of get_data with offset=%d, destination=%px, size=%ld\n",MODNAME, offset, destination, size);
+	printk("%s: invocation of sys_get_data\n",MODNAME);
+
+
+
+	struct file *filp;
+	struct get_args *args;
+
+	// TODO controlla se è montato il file-system !
+
+
+	args = kmalloc(sizeof(struct get_args), GFP_KERNEL);
+    if(!args){
+    	printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
+        return -1;
+    } 
+    
+	
+	args->offset = offset;
+	args->destination = destination;
+	args->size = size;
+    printk("destination: %px, len: %lu, block: %d\n", ((struct get_args*)args)->destination, ((struct get_args*)args)->size, ((struct get_args*)args)->offset);
+
+
+	// apro il device file
+
+	printk("opening device %s\n", DEV_NAME);
+	
+	filp = filp_open(DEV_NAME, O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		printk("error in filp open");
+		return -1;
+	}
+	printk("device file opened");
+
+	
+
+	vfs_ioctl(filp, GET_DATA, args);	
+	
+	filp_close(filp, NULL);		
 	return 0;
 }
 

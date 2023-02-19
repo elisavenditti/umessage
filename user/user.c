@@ -50,51 +50,30 @@ int main(int argc, char** argv){
 	switch(operation){
 
 		case 'I':
-			// invalidate data
-			if(argc<4) goto error_params;
-			arg = strtol(argv[3],NULL,10);
-			ioctl(fd, INVALIDATE_DATA, &arg);
-			// arg = strtol(argv[2],NULL,10);
-			// ret = syscall(INVALIDATE, arg);
+			// invalidate data - input: I #blocco
+			
+			arg = strtol(argv[2],NULL,10);
+			ret = syscall(INVALIDATE, arg);
 			break;
 		
 		
 		case 'P':
-			// put data
-			if(argc<4) goto error_params;
-			arg = strtol(argv[3],NULL,10);
-			printf("%s",contenuti[arg]);
-			int taglia = strlen(contenuti[arg]);			
-			struct put_args args;
-			args.source = contenuti[arg];
-			args.size = (size_t)taglia;
-			ioctl(fd, PUT_DATA, &args);
+			// put data	- input P nuova_stinga
 			
-			
-			//strlen non conta il terminatore di stringa
-			// ret = syscall(PUT, argv[2], strlen(argv[2]));
+			ret = syscall(PUT, argv[2], strlen(argv[2]));
 			break;
 		
 		
 		case 'G':
-			// get data
+			// get data - input: G #blocco  #byte
+
 			if(argc<4) goto error_params;
-			arg = strtol(argv[3],NULL,10);
-			char dest[100];
-			struct get_args garg;
-			garg.offset = arg;
-			garg.destination = dest;
-			garg.size = 20;
-			printf("voglio ricevere i dati in %p\n", dest);
-			ioctl(fd, GET_DATA, &garg);
-			printf("ho letto %d byte dal blocco %d: '%s'\n", garg.size, garg.offset, garg.destination);
-		
-			// if(argc<4) goto error_params;
-			// arg = strtol(argv[2],NULL,10);
-			// size_t size = strtol(argv[3],NULL,10);
-			// char* destination = "";
-			// printf("voglio mettere in destination (%p) i dati letti\n", destination);
-			// ret = syscall(GET, arg, destination, size);
+			arg = strtol(argv[2],NULL,10);
+			size_t size = strtol(argv[3],NULL,10);
+			char destination[] = "";
+			printf("voglio mettere in destination (%p) i dati letti\n", destination);
+			ret = syscall(GET, arg, destination, size);
+			printf("ho letto %d byte dal blocco %d: '%s'\n", size, arg, destination);
 			break;
 		
 		case 'O':
