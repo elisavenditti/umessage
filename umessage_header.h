@@ -55,21 +55,23 @@ struct block_node {
                                         // prima di modificare questo valore va impostata la validità corretta
     int num;
     struct mutex lock;                    // mutex_(un)lock(&queue_lock); 
-    unsigned long *ctr;
 };
 
 extern struct block_node block_metadata[NBLOCKS];
 extern struct block_node* valid_messages;
 extern int Major;
+extern unsigned long pending[2];
+extern unsigned long epoch;
+extern int next_epoch_index;
 
 
 //block device to contact in order to get data - it is initialized when the FS is mounted
 extern char block_device_name[20];
 
 
-
-#define change_validity(ptr)    (struct block_node *)((unsigned long) ptr^(0x8000000000000000))
-#define get_pointer(ptr)        (struct block_node *)((unsigned long) ptr|(0x8000000000000000))
+#define MASK 0x8000000000000000
+#define change_validity(ptr)    (struct block_node *)((unsigned long) ptr^MASK)
+#define get_pointer(ptr)        (struct block_node *)((unsigned long) ptr|MASK)
 #define get_validity(ptr)       ((unsigned long) ptr >> (sizeof(unsigned long) * 8 - 1))
 #define offset(val)             val + 2
 

@@ -46,8 +46,7 @@ asmlinkage int sys_invalidate_data(int offset){
 	int* arg;
 	struct file *filp;
 	
-	AUDIT
-	printk("%s: invocation of sys_invalidate_data\n",MODNAME);
+	AUDIT printk("%s: invocation of sys_invalidate_data\n",MODNAME);
 
 	arg = kmalloc(sizeof(int), GFP_KERNEL);
     if(!arg){
@@ -57,11 +56,9 @@ asmlinkage int sys_invalidate_data(int offset){
 
     ret = copy_from_user(arg, &offset, sizeof(int));        
     printk("block to invalidate is: %d\n", *(arg));
-
-	// printk("block to invalidate is: %d\n", offset);
     
 
-	// apro il device file
+	// open the device file
 
 	printk("opening device %s\n", DEV_NAME);
 	
@@ -73,8 +70,7 @@ asmlinkage int sys_invalidate_data(int offset){
 	printk("device file opened");
 
 	
-	
-	vfs_ioctl(filp, INVALIDATE_DATA, arg);	
+	vfs_ioctl(filp, INVALIDATE_DATA, (unsigned long) arg);	
 	
 	filp_close(filp, NULL);		
 	return 0;
@@ -88,11 +84,6 @@ __SYSCALL_DEFINEx(2, _put_data, char*, source, size_t, size){
 #else
 asmlinkage int sys_put_data(char* source, size_t size){
 #endif
-        
-
-    
-	printk("%s: invocation of sys_put_data\n",MODNAME);
-
 
 	int ret;
 	char* message;
@@ -101,6 +92,7 @@ asmlinkage int sys_put_data(char* source, size_t size){
 
 	// TODO controlla se è montato il file-system !
 
+	printk("%s: invocation of sys_put_data\n",MODNAME);
 	args = kmalloc(sizeof(struct put_args), GFP_KERNEL);
     if(!args){
     	printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
@@ -125,7 +117,7 @@ asmlinkage int sys_put_data(char* source, size_t size){
     printk("message: %s, len: %lu\n", message, ((struct put_args*)args)->size);
 
 
-	// apro il device file
+	// open the device file
 
 	printk("opening device %s\n", DEV_NAME);
 	
@@ -136,10 +128,8 @@ asmlinkage int sys_put_data(char* source, size_t size){
 	}
 	printk("device file opened");
 
-	
-	// args.source = source;
-	// args.size = size;
-	vfs_ioctl(filp, PUT_DATA, args);	
+
+	vfs_ioctl(filp, PUT_DATA, (unsigned long) args);	
 	
 	filp_close(filp, NULL);		
 	return 0;
@@ -155,16 +145,13 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 #endif
 
 
-	AUDIT
-	printk("%s: invocation of sys_get_data\n",MODNAME);
-
-
-
 	struct file *filp;
 	struct get_args *args;
 
-	// TODO controlla se è montato il file-system !
+	AUDIT printk("%s: invocation of sys_get_data\n",MODNAME);
 
+
+	// TODO controlla se è montato il file-system !
 
 	args = kmalloc(sizeof(struct get_args), GFP_KERNEL);
     if(!args){
@@ -179,7 +166,7 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
     printk("destination: %px, len: %lu, block: %d\n", ((struct get_args*)args)->destination, ((struct get_args*)args)->size, ((struct get_args*)args)->offset);
 
 
-	// apro il device file
+	// open the device file
 
 	printk("opening device %s\n", DEV_NAME);
 	
@@ -192,7 +179,7 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 
 	
 
-	vfs_ioctl(filp, GET_DATA, args);	
+	vfs_ioctl(filp, GET_DATA, (unsigned long) args);	
 	
 	filp_close(filp, NULL);		
 	return 0;

@@ -46,6 +46,13 @@ struct block_node block_metadata[NBLOCKS];
 struct block_node* valid_messages;
 struct class *cl;
 struct device *device;
+dev_t dev;
+
+
+
+unsigned long pending[2];
+unsigned long epoch;
+int next_epoch_index;
 
 
 // FUNZIONI DI STARTUP E SHUTDOWN DEL MODULO
@@ -57,7 +64,6 @@ int init_module(void) {
         int ret;
         int ret2;
         struct block_node *head;
-        unsigned long *counter = NULL;
         
 	AUDIT{
 	   printk(KERN_INFO "%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
@@ -97,11 +103,10 @@ int init_module(void) {
 
 	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
-        dev_t dev = MKDEV(Major, 0);
-        struct class *cl = class_create(THIS_MODULE, "umessage_class");
-        struct device *device = device_create(cl, NULL, dev, NULL, DEVICE_NAME);
-
-        printk(KERN_INFO "%s: device file created\n",MODNAME);
+        /*dev_t */dev = MKDEV(Major, 0);
+        // struct class *cl = class_create(THIS_MODULE, "umessage_class");
+        // struct device *device = device_create(cl, NULL, dev, NULL, DEVICE_NAME);
+        // printk(KERN_INFO "%s: device file created\n",MODNAME);
 
         // registrazione del filesystem
 
@@ -123,15 +128,9 @@ int init_module(void) {
 
         for(k=0; k<NBLOCKS; k++){
                               
-                counter = (unsigned long *) kmalloc(sizeof(unsigned long), GFP_KERNEL);
-                if(counter == NULL){
-                        printk("%s: kmalloc error, can't allocate memory needed to manage user messages (counter)\n",MODNAME);
-                        return -1;
-                }
-                *counter = 0;
+                
                 block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)
                 block_metadata[k].num = k;
-                block_metadata[k].ctr = counter;
                 mutex_init(&block_metadata[k].lock);
                 
                 // if(k==0){
@@ -147,8 +146,14 @@ int init_module(void) {
                 //         printk("validità ptr null:               %lu\n", get_validity(NULL));
                         
                 // }
-                printk("ctr blocco %d inizializzato a %lu\n", k, *(block_metadata[k].ctr));
+                // printk("ctr blocco %d inizializzato a %lu\n", k, *(block_metadata[k].ctr));
         }
+
+        // counter init
+        epoch = 0;
+	pending[0] = 0;
+        pending[1] = 0;
+	next_epoch_index = 1;	
 
 
         // creo una head permanente a cui agganciare elementi
@@ -160,7 +165,6 @@ int init_module(void) {
 
         head->val_next = change_validity(NULL);
         head->num = -1;
-        head->ctr = NULL;
         mutex_init(&head->lock);
         printk("chg validity NULL                       = %px\n", change_validity(NULL));
         printk("get_pointer(NULL)                       = %px\n", get_pointer(NULL));
@@ -187,12 +191,12 @@ void cleanup_module(void) {
 	protect_memory();
         printk(KERN_INFO "%s: sys-call table restored to its original content\n",MODNAME);
 
+        
         // eliminazione del device driver
         
-        
         unregister_chrdev(Major, DEVICE_NAME);
-	device_destroy(cl, MKDEV(Major, 0));
-        class_destroy(cl);
+	// device_destroy(cl, dev);
+        // class_destroy(cl);
         
         printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
         

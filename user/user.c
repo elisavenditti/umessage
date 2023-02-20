@@ -35,17 +35,17 @@ int main(int argc, char** argv){
 	char *path0 = "/dev/umessage";
 	int major0 = strtol(argv[2],NULL,10);
 	char buff0[4096];
-	printf("creating 1 minors for device %s with major %d\n",path0,major0);
-	sprintf(buff0,"mknod %s c %d 0\n",path0, major0);
-	system(buff0);
+	// printf("creating 1 minors for device %s with major %d\n",path0,major0);
+	// sprintf(buff0,"mknod %s c %d 0\n",path0, major0);
+	// system(buff0);
 				
-	printf("opening device %s\n",path0);
-	int fd = open(path0,O_RDWR);
-	if(fd == -1) {
-		printf("open error on device %s\n", path0);
-		return -1;
-	}
-	printf("device %s successfully opened\n", path0);
+	// printf("opening device %s\n",path0);
+	// int fd = open(path0,O_RDWR);
+	// if(fd == -1) {
+	// 	printf("open error on device %s\n", path0);
+	// 	return -1;
+	// }
+	// printf("device %s successfully opened\n", path0);
 			
 	switch(operation){
 
@@ -73,7 +73,7 @@ int main(int argc, char** argv){
 			char destination[] = "";
 			printf("voglio mettere in destination (%p) i dati letti\n", destination);
 			ret = syscall(GET, arg, destination, size);
-			printf("ho letto %d byte dal blocco %d: '%s'\n", size, arg, destination);
+			printf("ho letto %ld byte dal blocco %ld: '%s'\n", size, arg, destination);
 			break;
 		
 		case 'O':

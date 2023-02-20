@@ -14,3 +14,5 @@ Modulo sviluppato
                                             chiama get_entries per trovare dove installare le syscall implementate, infine le installa
                                             installa il driver e il filesystem
 6) sudo make mount-fs                       monta il filesystem presente sul block device logico con -o loop
+
+7) mknod /dev/umessage c 235 0
