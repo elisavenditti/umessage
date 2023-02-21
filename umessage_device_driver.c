@@ -307,7 +307,8 @@ int dev_invalidate_data(int offset){
    ret = 0;
    selected = &block_metadata[offset];   
    predecessor = valid_messages;                                                   
-                                                      
+
+   printk("sto invalidando il blocco %d\n", offset);                                                      
    // get write lock on the element to invalidate
    mutex_lock(&(selected->lock));
 
@@ -317,7 +318,7 @@ int dev_invalidate_data(int offset){
       goto end;
    }
    
-   
+   printk("il blocco ha validità %d\n", get_validity(selected->val_next));
    if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
       printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
       goto error;                         // return ENODEV ? settare ERRNO ?
@@ -381,12 +382,11 @@ int dev_invalidate_data(int offset){
    printk("HO FINITO\n");
 
 
-end:
-   
-   selected->val_next = change_validity(selected->val_next); 
+end: 
    mutex_unlock(&(selected->lock));  
    return ret;
 error:
+   selected->val_next = change_validity(selected->val_next);
    ret = -1;
    goto end;
 }

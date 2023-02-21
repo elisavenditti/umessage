@@ -54,8 +54,9 @@ asmlinkage int sys_invalidate_data(int offset){
         return -1;
     }
 
-    ret = copy_from_user(arg, &offset, sizeof(int));        
-    printk("block to invalidate is: %d\n", *(arg));
+    // ret = copy_from_user(arg, &offset, sizeof(int));
+	*arg = offset;        
+    printk("block to invalidate is: %d\n", *arg);
     
 
 	// open the device file
