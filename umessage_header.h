@@ -9,7 +9,8 @@
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)
 #define DEVICE_NAME "umessage"  /* Device file name in /dev/ - not mandatory  */
-#define DEV_NAME "/dev/umessage"
+// #define DEV_NAME "/dev/umessage"
+#define DEV_NAME "./mount/the-file"
 #define DEFAULT_BLOCK_SIZE 4096
 #define NBLOCKS 10
 
@@ -57,6 +58,10 @@ struct block_node {
     struct mutex lock;                    // mutex_(un)lock(&queue_lock); 
 };
 
+
+
+// extern const struct file_operations onefilefs_file_operations; 
+extern const struct file_operations fops;
 extern struct block_node block_metadata[NBLOCKS];
 extern struct block_node* valid_messages;
 extern int Major;

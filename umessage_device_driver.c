@@ -10,7 +10,7 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/ioctl.h>
-
+#include <linux/delay.h>            // temp inclusion
 
 // DEFINIZIONI E DICHIARAZIONI
 
@@ -27,7 +27,7 @@ int Major;
 struct block_device *bdev;
 // static DEFINE_MUTEX(device_state);
 
-
+DECLARE_WAIT_QUEUE_HEAD(wqueue);
 
 // IMPLEMENTAZIONE DELLE OPERAZIONI
 
@@ -281,11 +281,10 @@ ret:
    // the first bit in my_epoch is the index where we must release the counter
    index = (my_epoch & MASK) ? 1 : 0;           
 	__sync_fetch_and_add(&pending[index],1);
+   wake_up_interruptible(&wqueue);
    return return_val;
 
 }
-
-
 
 
 
@@ -308,7 +307,7 @@ int dev_invalidate_data(int offset){
    selected = &block_metadata[offset];   
    predecessor = valid_messages;                                                   
 
-   printk("sto invalidando il blocco %d\n", offset);                                                      
+                                                        
    // get write lock on the element to invalidate
    mutex_lock(&(selected->lock));
 
@@ -364,22 +363,23 @@ int dev_invalidate_data(int offset){
       
       
    // move to a new epoch
-	updated_epoch = (next_epoch_index) ? MASK : 0;
+   updated_epoch = (next_epoch_index) ? MASK : 0;
    next_epoch_index += 1;
 	next_epoch_index %= 2;	
 
-	last_epoch = __atomic_exchange_n (&(epoch), updated_epoch, __ATOMIC_SEQ_CST); 
+	last_epoch = __atomic_exchange_n (&(epoch), updated_epoch, __ATOMIC_SEQ_CST);
 	index = (last_epoch & MASK) ? 1 : 0; 
 	grace_period_threads = last_epoch & (~MASK); 
 
 	AUDIT
-	printk("%s: waiting %d readers)\n", MODNAME);
+	printk("%s: INVALIDATE (waiting %d readers on index = %d)\n", MODNAME, grace_period_threads, index);
 	
 	
-   DECLARE_WAIT_QUEUE_HEAD(wqueue);
+   
    wait_event_interruptible(wqueue, pending[index] >= grace_period_threads);
+   // while(pending[index] < grace_period_threads){ msleep(1);}
    pending[index] = 0;
-   printk("HO FINITO\n");
+   printk("%s: INVALIDATION DONE\n", MODNAME);
 
 
 end: 
@@ -440,8 +440,12 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    }
 
    // signal the presence of reader 
+   unsigned int into = (epoch) & (~MASK);
+   printk("old ctr: %ld\n", into);
    my_epoch = __sync_fetch_and_add(&epoch,1);
- 
+   into = (epoch) & (~MASK);
+   printk("new ctr: %ld\n", into);
+
    // check if the valid list is empty
    if(get_pointer(valid_messages->val_next) == change_validity(NULL)){
       ret = 0;
@@ -452,8 +456,14 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    // READ ACCESS to the first block
    next = get_pointer(valid_messages->val_next);
 
+   // TEST PER IL FUNZIONAMENTO DEL GRACE PERIOD   
+   // printk("dormo per 5 sec\n");
+   // msleep(5000); // attende 5 secondi
+   // printk("buongiorno\n");
+
+
    // iterate on the blocks until the next is NULL
-   
+
    while(next != change_validity(NULL)){      
       
       curr = next;
@@ -504,12 +514,14 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    temp[0] = '\0';
    ret = copy_to_user(buff + copied, temp, 1);
    copied =  copied + 1 - ret;
-   
-   index = (my_epoch & MASK) ? 1 : 0;           
-	__sync_fetch_and_add(&pending[index],1);
-   
    ret = len;
 ending:   
+   index = (my_epoch & MASK) ? 1 : 0;           
+	printk("reset ctr index %d (before): %ld\n", index, pending[index]);
+   __sync_fetch_and_add(&pending[index],1);
+   printk("reset ctr index %d (after): %ld\n", index, pending[index]);
+   wake_up_interruptible(&wqueue);
+
    kfree(temp_buf);
    blkdev_put(bdev, FMODE_READ);
    *off = *off + copied;
@@ -554,7 +566,7 @@ static int dev_release(struct inode *inode, struct file *file) {
 
 
 
-static struct file_operations fops = {
+const struct file_operations fops = {
   .read = dev_read,
   .open =  dev_open,
   .release = dev_release,

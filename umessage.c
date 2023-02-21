@@ -44,12 +44,7 @@ module_param(the_syscall_table, ulong, 0660);
 
 struct block_node block_metadata[NBLOCKS];
 struct block_node* valid_messages;
-struct class *cl;
-struct device *device;
 dev_t dev;
-
-
-
 unsigned long pending[2];
 unsigned long epoch;
 int next_epoch_index;
@@ -103,11 +98,8 @@ int init_module(void) {
 
 	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
-        /*dev_t */dev = MKDEV(Major, 0);
-        // struct class *cl = class_create(THIS_MODULE, "umessage_class");
-        // struct device *device = device_create(cl, NULL, dev, NULL, DEVICE_NAME);
-        // printk(KERN_INFO "%s: device file created\n",MODNAME);
-
+        dev = MKDEV(Major, 0);
+        
         // registrazione del filesystem
 
         ret2 = register_filesystem(&onefilefs_type);
@@ -119,12 +111,6 @@ int init_module(void) {
 
         
         // inizializzazione dell'array
-        
-        // block_metadata = (struct block_node*) kmalloc(NBLOCKS*sizeof(struct block_node), GFP_KERNEL);
-        // if(block_metadata == NULL){
-        //         printk("%s: kmalloc error, can't allocate memory needed to manage user messages (array)\n",MODNAME);
-        //         return -1;
-        // }
 
         for(k=0; k<NBLOCKS; k++){
                               
@@ -150,10 +136,10 @@ int init_module(void) {
         }
 
         // counter init
-        epoch = 0;
-	pending[0] = 0;
-        pending[1] = 0;
-	next_epoch_index = 1;	
+        epoch = 0x0;
+	pending[0] = 0x0;
+        pending[1] = 0x0;
+	next_epoch_index = 0x1;	
 
 
         // creo una head permanente a cui agganciare elementi
@@ -195,8 +181,6 @@ void cleanup_module(void) {
         // eliminazione del device driver
         
         unregister_chrdev(Major, DEVICE_NAME);
-	// device_destroy(cl, dev);
-        // class_destroy(cl);
         
         printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
         

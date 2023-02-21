@@ -12,7 +12,7 @@
 #include "umessagefs.h"
 
 
-//this iterate function just returns 3 entries: . and .. and then the name of the unique file of the file system
+// this iterate function just returns 3 entries: . and .. and then the name of the unique file of the file system
 static int onefilefs_iterate(struct file *file, struct dir_context* ctx) {
 
     // printk("%s: we are inside readdir with ctx->pos set to %lld", MODNAME, ctx->pos);
@@ -31,8 +31,8 @@ static int onefilefs_iterate(struct file *file, struct dir_context* ctx) {
 	}
 
 	if (ctx->pos == 1){
-  //  		printk("%s: we are inside readdir with ctx->pos set to %lld", MODNAME, ctx->pos);
-		//here the inode number does not care
+   		// printk("%s: we are inside readdir with ctx->pos set to %lld", MODNAME, ctx->pos);
+		// here the inode number does not care
 		if(!dir_emit(ctx,"..", FILENAME_MAXLEN, 1, DT_UNKNOWN)){
 			return 0;
 		}
@@ -42,7 +42,7 @@ static int onefilefs_iterate(struct file *file, struct dir_context* ctx) {
 	
 	}
 	if (ctx->pos == 2){
-   // 		printk("%s: we are inside readdir with ctx->pos set to %lld", MODNAME, ctx->pos);
+   		// printk("%s: we are inside readdir with ctx->pos set to %lld", MODNAME, ctx->pos);
 		if(!dir_emit(ctx, UNIQUE_FILE_NAME, FILENAME_MAXLEN, SINGLEFILEFS_FILE_INODE_NUMBER, DT_UNKNOWN)){
 			return 0;
 		}
