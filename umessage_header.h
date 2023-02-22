@@ -11,7 +11,9 @@
 #define DEVICE_NAME "umessage"
 #define DEV_NAME "./mount/the-file"
 #define DEFAULT_BLOCK_SIZE 4096
-#define NBLOCKS 10
+#define METADATA_SIZE sizeof(void*)
+#define DATA_SIZE DEFAULT_BLOCK_SIZE - METADATA_SIZE
+#define NBLOCKS 5
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
@@ -23,17 +25,6 @@
 #endif
 
 
-struct put_args{
-    char* source;
-    size_t size;
-};
-
-struct get_args{
-    int offset;
-    char * destination;
-    size_t size;
-};
-
 
 struct block_node {
     struct block_node *val_next;        // il primo bit si riferisce alla validità del blocco corrente
@@ -42,7 +33,11 @@ struct block_node {
     struct mutex lock;                  // mutex_(un)lock(&queue_lock); 
 };
 
-
+//valuta se toglierlo
+struct bdev_node {
+    unsigned long val_next;
+    char data[];
+};
 
 
 extern const struct file_operations fops;
@@ -52,9 +47,11 @@ extern int Major;
 extern unsigned long pending[2];
 extern unsigned long epoch;
 extern int next_epoch_index;
+extern unsigned long bdev_usage;
+extern wait_queue_head_t umount_queue;
 
 //block device to contact in order to get data - it is initialized when the FS is mounted
-extern char block_device_name[20];
+extern struct block_device *bdev;
 
 
 int dev_put_data(char *, size_t);
@@ -68,6 +65,7 @@ int dev_get_data(int, char *, size_t);
 #define get_pointer(ptr)        (struct block_node *)((unsigned long) ptr|MASK)
 #define get_validity(ptr)       ((unsigned long) ptr >> (sizeof(unsigned long) * 8 - 1))
 #define offset(val)             val + 2
+#define data_offset(ptr)        ptr + DATA_SIZE
 
 
 #endif

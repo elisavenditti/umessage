@@ -17,16 +17,10 @@
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
-// int            dev_put_data(char *, size_t);
-// int            dev_invalidate_data(int);
-// int            dev_get_data(int, char *, size_t);
 
 int Major;
-struct block_device *bdev;
-// static DEFINE_MUTEX(device_state);
-
 DECLARE_WAIT_QUEUE_HEAD(wqueue);
-
+// static DEFINE_MUTEX(device_state);
 
 
 // PUT DATA
@@ -34,6 +28,7 @@ DECLARE_WAIT_QUEUE_HEAD(wqueue);
 int dev_put_data(char* source, size_t size){
    
    int i;
+   int ret;
    int block_to_write;
    struct block_node *cas;
    struct block_node *tail;
@@ -41,7 +36,20 @@ int dev_put_data(char* source, size_t size){
    struct buffer_head *bh = NULL;
    struct block_node current_block;
    struct block_node* selected_block = NULL;
+   struct block_device *temp;
+   
+   printk("PUT DATA\n");
 
+   __sync_fetch_and_add(&bdev_usage,1);            // signal the presence of reader on bdev variable
+   temp = bdev;
+   printk("bdev_usage = %lu\n", bdev_usage);
+   if(temp == NULL){
+      printk("%s: NO DEVICE MOUNTED", MODNAME);
+      __sync_fetch_and_sub(&bdev_usage,1);
+      printk("bdev_usage = %lu\n", bdev_usage);
+      wake_up_interruptible(&umount_queue);
+      return -ENODEV;
+   }
 
    // get an invalid block to overwrite
    for(i=0; i<NBLOCKS; i++){
@@ -56,7 +64,9 @@ int dev_put_data(char* source, size_t size){
    
    if (selected_block == NULL){
       printk("%s: no space available to insert a message\n", MODNAME);
-      return -1;
+      __sync_fetch_and_sub(&bdev_usage,1);
+      wake_up_interruptible(&umount_queue);
+      return -ENOMEM;
    }
    printk("il blocco invalido è il numero %d\n", selected_block->num);
 
@@ -66,15 +76,18 @@ int dev_put_data(char* source, size_t size){
    tail = valid_messages;
    
    while(get_pointer(tail->val_next) != change_validity(NULL)){       // the tail has next pointer NULL but VALID
+      
       tail = get_pointer(tail->val_next);
       if(tail->val_next == NULL){
+         
          printk("%s: not able to find the tail due to concurrency, retry\n", MODNAME);
-         return -1;
+         __sync_fetch_and_sub(&bdev_usage,1);
+         wake_up_interruptible(&umount_queue);
+         return -EAGAIN;
       }
    }
-   printk("la coda è al blocco: %d\n", tail->num);
-   
-   
+
+   printk("la coda è al blocco: %d\n", tail->num);   
 
    // write lock on the selected block
    mutex_lock(&(selected_block->lock));
@@ -87,8 +100,8 @@ int dev_put_data(char* source, size_t size){
    if(old_next == change_validity(NULL)){
       // FAILURE - new value returned
       printk("%s: La CAS è fallita, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(selected_block->val_next), change_validity(NULL));
-      mutex_unlock(&(selected_block->lock));
-      return -1;
+      ret = -EAGAIN;
+      goto put_exit;
    }
    
    // SUCCESS - old value returned
@@ -105,39 +118,23 @@ int dev_put_data(char* source, size_t size){
       // FAILURE - new value returned
       printk("%s: La CAS è fallita, valore trovato: %px - valore atteso: %px\n", MODNAME, change_validity(tail->val_next), selected_block);
       selected_block->val_next = NULL;
-      mutex_unlock(&(selected_block->lock));
+      ret = -EAGAIN;
+      goto put_exit;
       return -1;
    }
    
    // SUCCESS - old value returned
    printk("%s: La CAS ha avuto successo ex_coda.next = %px, &inserted_block = %px\n", MODNAME, change_validity(tail->val_next), selected_block);
-      
-      
-   // trovare il block device   
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
-      selected_block->val_next = NULL;
-      mutex_unlock(&(selected_block->lock));
-      return -1;                          // return ENODEV ? settare ERRNO ?
-   }
-
-   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
    
-   if(bdev == NULL){
-      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
-      selected_block->val_next = NULL;
-      mutex_unlock(&(selected_block->lock));
-      return -1;                          // return ENODEV ?
-   }
-
+   
 
    // get the cached data
    
    block_to_write = offset(selected_block->num);
-   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_write);
+   bh = (struct buffer_head *)sb_bread(temp->bd_super, block_to_write);
    if(!bh){
       selected_block->val_next = NULL;
-      mutex_unlock(&(selected_block->lock));
+      goto put_exit;
       return -EIO;
    }
    if (bh->b_data != NULL){      // e se è null che succede?
@@ -147,10 +144,9 @@ int dev_put_data(char* source, size_t size){
    
    // the update is not atomic: the lock protect concurrent updates
 
+   // strncpy(data_offset(bh->b_data), source, size);  
    strncpy(bh->b_data, source, size);  
    brelse(bh);
-   blkdev_put(bdev, FMODE_READ);
-   mutex_unlock(&(selected_block->lock));  
 
    //STAMPA PROVA
    for(i=0; i<NBLOCKS; i++){
@@ -158,7 +154,16 @@ int dev_put_data(char* source, size_t size){
    }
    //FINE STAMPA
 
-   return DEFAULT_BLOCK_SIZE;
+   ret = selected_block->num;
+
+put_exit:   
+   mutex_unlock(&(selected_block->lock));  
+   __sync_fetch_and_sub(&bdev_usage,1);
+   printk("bdev_usage = %lu\n", bdev_usage);
+   wake_up_interruptible(&umount_queue);
+
+
+   return ret;
 
 }
 
@@ -174,24 +179,23 @@ int dev_get_data(int offset, char * destination, size_t size){
 	int index;
    int return_val;
    int block_to_read;
+   unsigned long my_epoch;
    struct buffer_head *bh = NULL;
-   struct block_node* selected_block;
-   
-	unsigned long my_epoch;
+   struct block_node* selected_block;  
+   struct block_device *temp; 
+	
 
-   // get the block device in order to reach cached data
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
-      return -1;                          // return ENODEV ? settare ERRNO ?
+   printk("GET DATA\n");
+   __sync_fetch_and_add(&bdev_usage,1);            // signal the presence of reader on bdev variable
+   temp = bdev;
+   printk("bdev_usage = %lu\n", bdev_usage);
+   if(temp == NULL){
+      printk("%s: NO DEVICE MOUNTED", MODNAME);
+      __sync_fetch_and_sub(&bdev_usage,1);    
+      printk("bdev_usage = %lu\n", bdev_usage);
+      wake_up_interruptible(&umount_queue);
+      return -ENODEV;
    }
-
-   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
-   
-   if(bdev == NULL){
-      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
-      return -1;                          // return ENODEV ?
-   }
-
 
    // get metadata of the block   
    printk(KERN_INFO "%s: GETDATA del blocco %d\n", MODNAME, offset);
@@ -199,7 +203,9 @@ int dev_get_data(int offset, char * destination, size_t size){
 
    if(get_validity(selected_block->val_next) == 0){
       printk(KERN_INFO "%s: the block requested is not valid", MODNAME);
-      return 0;
+      __sync_fetch_and_sub(&bdev_usage,1);
+      wake_up_interruptible(&umount_queue);
+      return -ENODATA;
    }
 
    // signal the presence of reader - avoid that a writer reuses this block while i'm reading
@@ -208,28 +214,33 @@ int dev_get_data(int offset, char * destination, size_t size){
 
    // get cached data
    block_to_read = offset(offset);
-   bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
+   bh = (struct buffer_head *)sb_bread(temp->bd_super, block_to_read);
    if(!bh){
       return_val = -EIO;
-      goto ret;
+      goto get_exit;
    }
-   if (bh->b_data != NULL)
-      AUDIT printk(KERN_INFO "%s: [blocco %d] ho letto -> %s\n", MODNAME, block_to_read, bh->b_data);
+   
+   printk("bh->size = %d - size requested = %d\n", bh->b_size, size);
+   
+   if (bh->b_data != NULL){
+      AUDIT printk(KERN_INFO "%s: [blocco %d] ho letto -> %s\n", MODNAME, block_to_read, bh->b_data);  
+      ret = copy_to_user(destination, bh->b_data, size);
+      return_val = size - ret;
+   }
 
-   
-   // ritorna il numero di byte che non ha potuto copiare
-   ret = copy_to_user(destination, bh->b_data, size);
-   return_val = size - ret;
-   
+   else return_val = 0;
    brelse(bh);
-   blkdev_put(bdev, FMODE_READ);
 
    
-ret:
+get_exit:
+
    // the first bit in my_epoch is the index where we must release the counter
    index = (my_epoch & MASK) ? 1 : 0;           
 	__sync_fetch_and_add(&pending[index],1);
+   __sync_fetch_and_sub(&bdev_usage,1);
+   printk("bdev_usage = %lu\n", bdev_usage);
    wake_up_interruptible(&wqueue);
+   wake_up_interruptible(&umount_queue);
    return return_val;
 
 }
@@ -250,10 +261,17 @@ int dev_invalidate_data(int offset){
 	unsigned long grace_period_threads;
 	int index;
 
+   printk("INVALIDATE DATA\n");
+   // not reserving the bdev_usage counter because it is not used
+   if(bdev == NULL){
+      printk("%s: NO DEVICE MOUNTED", MODNAME);
+      return -ENODEV;
+   }
+
+
    ret = 0;
    selected = &block_metadata[offset];   
    predecessor = valid_messages;                                                   
-   printk("INVALIDATE DATA\n");
                                                         
    // get write lock on the element to invalidate
    mutex_lock(&(selected->lock));
@@ -261,15 +279,10 @@ int dev_invalidate_data(int offset){
    // if the block is already invalid there is nothing to do   
    if(get_validity(selected->val_next) == 0){
       AUDIT printk("%s: the block %d is already invalid, nothing to do\n", MODNAME, offset);
-      goto end;
+      ret = -ENODATA;
+      goto inv_end;
    }
-   
-   printk("il blocco ha validità %lu\n", get_validity(selected->val_next));
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
-      goto error;                         // return ENODEV ? settare ERRNO ?
-   }
-   
+   // printk("il blocco ha validità %lu\n", get_validity(selected->val_next));
 
 
    // Get the predecessor (N-1) of the block to invalidate (N) 
@@ -279,11 +292,12 @@ int dev_invalidate_data(int offset){
       predecessor = get_pointer(predecessor->val_next);
       if(predecessor == change_validity(NULL)){
          printk("%s: element to invalidate not found, inconsistent values in metadata", MODNAME);
-         goto error;
+         selected->val_next = change_validity(selected->val_next);
+         ret = -1;
+         goto inv_end;
       }
    }
    printk("il predecessore è al blocco: %d\n", predecessor->num);
-
  
 
    // invalidate the block - it is valid now, we checked after the lock
@@ -301,7 +315,9 @@ int dev_invalidate_data(int offset){
    if(cas == change_validity(selected->val_next)){
       // FAILURE - new value returned
       printk("%s: La CAS è fallita, valore trovato: %px - valore atteso: %px\n", MODNAME, predecessor->val_next, change_validity(selected->val_next));
-      goto error;
+      selected->val_next = change_validity(selected->val_next);
+      ret = -EAGAIN;
+      goto inv_end;
    }
    
 
@@ -329,13 +345,9 @@ int dev_invalidate_data(int offset){
    printk("%s: INVALIDATION DONE\n", MODNAME);
 
 
-end: 
+inv_end: 
    mutex_unlock(&(selected->lock));  
    return ret;
-error:
-   selected->val_next = change_validity(selected->val_next);
-   ret = -1;
-   goto end;
 }
 
 
@@ -346,8 +358,6 @@ error:
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
 
-   // LETTURA DI TUTTI I BLOCCHI IN ORDINE
-
    int ret; 
    int index;
    int lenght;
@@ -357,46 +367,43 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    int block_to_read;
    struct block_node *next;
    struct block_node *curr;
-   struct block_device *bdev;
    int minor = get_minor(filp);
    int major = get_major(filp);
    struct buffer_head *bh = NULL;
+   struct block_device *temp_bdev;
 
    unsigned long my_epoch;
-
-   AUDIT{
-      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %lu\n",MODNAME, major, minor, len);
-      printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
-   }
-
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
-      return -1;                          // return ENODEV ?
-   }
 
    if(*off != 0) return 0;
    copied = 0;
 
-   // get the block device in order to reach cached data
-
-   bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
-
-   if(bdev == NULL){
-      printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
-      return -1;                          // return ENODEV ?
+   __sync_fetch_and_add(&bdev_usage,1);
+   temp_bdev = bdev;
+   printk("bdev_usage = %lu\n", bdev_usage);
+   if(temp_bdev == NULL){
+      printk("%s: NO DEVICE MOUNTED", MODNAME);
+      __sync_fetch_and_sub(&bdev_usage,1);
+      wake_up_interruptible(&umount_queue);
+      return -ENODEV;
    }
 
+   AUDIT{
+      printk("READ FILE\n");
+      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %lu\n",MODNAME, major, minor, len);
+   }
+
+   
+
+
    // signal the presence of reader 
-   // unsigned int into = (epoch) & (~MASK);
    printk("old ctr: %ld\n", (epoch) & (~MASK));
    my_epoch = __sync_fetch_and_add(&epoch,1);
-   // into = (epoch) & (~MASK);
    printk("new ctr: %ld\n", (epoch) & (~MASK));
 
    // check if the valid list is empty
    if(get_pointer(valid_messages->val_next) == change_validity(NULL)){
       ret = 0;
-      goto ending;
+      goto read_end;
    }
 
 
@@ -404,9 +411,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    next = get_pointer(valid_messages->val_next);
 
    // TEST PER IL FUNZIONAMENTO DEL GRACE PERIOD   
-   // printk("dormo per 5 sec\n");
-   // msleep(5000); // attende 5 secondi
-   // printk("buongiorno\n");
+   printk("dormo per 5 sec\n");
+   msleep(5000); // attende 5 secondi
+   printk("buongiorno\n");
 
 
    // iterate on the blocks until the next is NULL
@@ -417,10 +424,10 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       block_to_read = offset(next->num);
 
       // get cached data
-      bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
+      bh = (struct buffer_head *)sb_bread(temp_bdev->bd_super, block_to_read);
       if(!bh){
          ret = -EIO;
-         goto ending;
+         goto read_end;
       }
 
       if (bh->b_data != NULL){
@@ -436,7 +443,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          if(!temp_buf){
             printk("%s: kmalloc error, unable to allocate memory for read messages as single file\n", MODNAME);
             ret = -1;
-            goto ending;
+            goto read_end;
          }
 
          strncpy(temp_buf, bh->b_data, lenght);
@@ -455,22 +462,24 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    if(!temp_buf){
       printk("%s: kmalloc error, unable to allocate memory for read messages as single file\n", MODNAME);
       ret = -1;
-      goto ending;
+      goto read_end;
    }
 
    temp[0] = '\0';
    ret = copy_to_user(buff + copied, temp, 1);
    copied =  copied + 1 - ret;
    ret = len;
-ending:   
+read_end:   
    index = (my_epoch & MASK) ? 1 : 0;           
 	printk("reset ctr index %d (before): %ld\n", index, pending[index]);
    __sync_fetch_and_add(&pending[index],1);
    printk("reset ctr index %d (after): %ld\n", index, pending[index]);
    wake_up_interruptible(&wqueue);
+   __sync_fetch_and_sub(&bdev_usage,1);
+   printk("bdev_usage = %lu\n", bdev_usage);
+   wake_up_interruptible(&umount_queue);
 
    kfree(temp_buf);
-   blkdev_put(bdev, FMODE_READ);
    *off = *off + copied;
    return ret;
    

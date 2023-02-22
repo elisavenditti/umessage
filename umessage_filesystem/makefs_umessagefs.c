@@ -20,14 +20,13 @@
 
 int main(int argc, char *argv[])
 {
-	int fd, nbytes;
+	int i, fd, nbytes;
 	ssize_t ret;
 	struct onefilefs_sb_info sb;
 	struct onefilefs_inode root_inode;
 	struct onefilefs_inode file_inode;
 	struct onefilefs_dir_record record;
 	char *block_padding;
-	// char *file_body = "Wathever content you would like.\n";//this is the default content of the unique file 
 
 
 	if (argc != 2) {
@@ -97,40 +96,46 @@ int main(int argc, char *argv[])
 
 
 	// write file datablock
-	char* file_body = "bingo!";
-	int i=0;
-bis:
-	nbytes = strlen(file_body);
-	ret = write(fd, file_body, nbytes);
-	if (ret != nbytes) {
-		printf("Writing file datablock has failed.\n");
-		close(fd);
-		return -1;
-	}
-	nbytes = DEFAULT_BLOCK_SIZE - strlen(file_body);
-	block_padding = malloc(nbytes);
+	
+	for(i=0; i<NBLOCKS; i++){
+		// // metadata
+		// unsigned long metadata = change_validity(NULL);
+    	// ret = write(fd, &metadata, METADATA_SIZE);
+		// // ret = write(fd, change_validity(NULL), METADATA_SIZE);
+		// if (ret != METADATA_SIZE) {
+		// 	printf("Writing file metadata has failed.\n");
+		// 	close(fd);
+		// 	return -1;
+		// }
 
-	ret = write(fd, block_padding, nbytes);
-	if (ret != nbytes) {
-		printf("The padding bytes are not written properly. Retry your mkfs\n");
-		close(fd);
-		return -1;
-	}
-	printf("File datablock has been written succesfully.\n");
+		// data
+		nbytes = strlen(testo[i]);
+		// if(nbytes > DATA_SIZE){
+		if(nbytes > DEFAULT_BLOCK_SIZE){
+			printf("Data dimension not enough to contain text.\n");
+			return -1;
+		}
+		ret = write(fd, testo[i], nbytes);
+		if (ret != nbytes) {
+			printf("Writing file datablock has failed.\n");
+			close(fd);
+			return -1;
+		}
+		
+		// padding
+		// nbytes = DEFAULT_BLOCK_SIZE - strlen(testo[i]) - METADATA_SIZE;
+		nbytes = DEFAULT_BLOCK_SIZE - strlen(testo[i]);
+		block_padding = malloc(nbytes);
+		ret = write(fd, block_padding, nbytes);
+		if (ret != nbytes) {
+			printf("The padding bytes are not written properly. Retry your mkfs\n");
+			close(fd);
+			return -1;
+		}
+		printf("(%d/%d) File datablock has been written succesfully.\n", i+1, NBLOCKS);
 
-	i++;
-	if(i==1){
-		file_body = "bongo ...";
-		goto bis;
 	}
-	if(i==2){
-		file_body = "bango ???";
-		goto bis;
-	}
-	if(i==3){
-		file_body = "bengo $$$";
-		goto bis;
-	}
+
 	close(fd);
 
 	return 0;

@@ -43,19 +43,19 @@ asmlinkage int sys_invalidate_data(int offset){
 #endif
     
 	int ret;
-	
+	if (offset>NBLOCKS || offset<0) return -EINVAL;
 	
 	AUDIT {
 		printk("%s: invocation of sys_invalidate_data\n",MODNAME);
 		printk("block to invalidate is: %d\n", offset);
 	}
 
-	// TODO controlla se è montato il file-system !
-	// ...
-
 
 	// call the specific function in device driver
-	ret = dev_invalidate_data(offset);
+	do{
+		ret = dev_invalidate_data(offset);
+	} while (ret == -EAGAIN);
+	
 	return ret;
 }
 
@@ -69,11 +69,12 @@ asmlinkage int sys_put_data(char* source, size_t size){
 #endif
 
 	int ret;
+	int len;
 	char* message;
 
-	// TODO controlla se è montato il file-system !
-	// ...
-    
+    // if(size > DATA_SIZE) return -EINVAL;
+	if(size > DEFAULT_BLOCK_SIZE) return -EINVAL;
+	
     // dynamic allocation of area to contain the message
     message = kmalloc(size+1, GFP_KERNEL);
     if (!message){
@@ -82,12 +83,18 @@ asmlinkage int sys_put_data(char* source, size_t size){
     }
 
     ret = copy_from_user(message, source, size);
+	len = strlen(message);
+	if(len<size) size = len;
     message[size] = '\0';
+
     printk("message: %s, len: %lu\n", message, size+1);
 
 
 	// call the specific function in device driver
-	ret = dev_put_data(message, size + 1);				// the insertion must include '/0'	
+	do {
+		ret = dev_put_data(message, size + 1);				// the insertion must include '/0'	
+	} while (ret == -EAGAIN);
+	
 	return ret;
 }
 
@@ -102,14 +109,14 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 #endif
 
 	int ret;
+	// if(size>DATA_SIZE) size = DATA_SIZE;
+	if(size>DEFAULT_BLOCK_SIZE) size = DEFAULT_BLOCK_SIZE;
 
 	AUDIT{
 		printk("%s: invocation of sys_get_data\n",MODNAME);
 		printk("destination: %px, len: %lu, block: %d\n", destination, size, offset);
 	}
 
-	// TODO controlla se è montato il file-system !
-	// ...
 
 	
 	// call the specific function in device driver
