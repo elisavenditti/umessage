@@ -31,7 +31,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     uint64_t magic;
 
 
-    //Unique identifier of the filesystem
+    // Unique identifier of the filesystem
     sb->s_magic = MAGIC;
 
     bh = sb_bread(sb, SB_BLOCK_NUMBER);
@@ -42,29 +42,30 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     magic = sb_disk->magic;
     brelse(bh);
 
-    //check on the expected magic number
+    // check on the expected magic number
     if(magic != sb->s_magic){
 	return -EBADF;
     }
 
-    sb->s_fs_info = NULL; //FS specific data (the magic number) already reported into the generic superblock
-    sb->s_op = &singlefilefs_super_ops;//set our own operations
+    sb->s_fs_info = NULL;                               // FS specific data (the magic number) already reported into the generic superblock
+    sb->s_op = &singlefilefs_super_ops;                 // set our own operations
 
 
-    root_inode = iget_locked(sb, 0);//get a root inode indexed with 0 from cache
+    root_inode = iget_locked(sb, 0);                    // get a root inode indexed with 0 from cache
     if (!root_inode){
         return -ENOMEM;
     }
 
-    root_inode->i_ino = SINGLEFILEFS_ROOT_INODE_NUMBER;//this is actually 10
-    inode_init_owner(&init_user_ns, root_inode, NULL, S_IFDIR);//set the root user as owned of the FS root
+    root_inode->i_ino = SINGLEFILEFS_ROOT_INODE_NUMBER; // this is actually 10
+    inode_init_owner(&init_user_ns, root_inode, NULL, S_IFDIR);// set the root user as owned of the FS root
     root_inode->i_sb = sb;
-    root_inode->i_op = &onefilefs_inode_ops;//set our inode operations
-    root_inode->i_fop = &onefilefs_dir_operations;//set our file operations
-    //update access permission
+    root_inode->i_op = &onefilefs_inode_ops;            // set our inode operations
+    root_inode->i_fop = &onefilefs_dir_operations;      // set our file operations
+    
+    // update access permission
     root_inode->i_mode = S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH;
 
-    //baseline alignment of the FS timestamp to the current time
+    // baseline alignment of the FS timestamp to the current time
     ktime_get_real_ts64(&curr_time);
     root_inode->i_atime = root_inode->i_mtime = root_inode->i_ctime = curr_time;
 
@@ -75,7 +76,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     if (!sb->s_root)
         return -ENOMEM;
 
-    sb->s_root->d_op = &singlefilefs_dentry_ops;//set our dentry operations
+    sb->s_root->d_op = &singlefilefs_dentry_ops;        // set our dentry operations
 
     //unlock the inode to make it usable
     unlock_new_inode(root_inode);
@@ -115,7 +116,8 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     return ret;
 }
 
-//file system structure
+
+// file system structure
 static struct file_system_type onefilefs_type = {
 	.owner = THIS_MODULE,
     .name           = "singlefilefs",

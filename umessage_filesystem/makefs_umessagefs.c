@@ -17,7 +17,6 @@
 	- BLOCK 2, ..., datablocks of the unique file 
 */
 
-// Codice utente per formattare il dispositivo fisico
 
 int main(int argc, char *argv[])
 {

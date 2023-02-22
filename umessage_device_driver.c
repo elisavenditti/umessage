@@ -10,72 +10,22 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/ioctl.h>
-#include <linux/delay.h>            // temp inclusion
+#include <linux/delay.h>            // test inclusion
 
 // DEFINIZIONI E DICHIARAZIONI
 
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
-// static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
-static long    dev_ioctl(struct file *, unsigned int, unsigned long);
-int            dev_put_data(char *, size_t);
-int            dev_invalidate_data(int);
-int            dev_get_data(int, char *, size_t);
+// int            dev_put_data(char *, size_t);
+// int            dev_invalidate_data(int);
+// int            dev_get_data(int, char *, size_t);
 
 int Major;
 struct block_device *bdev;
 // static DEFINE_MUTEX(device_state);
 
 DECLARE_WAIT_QUEUE_HEAD(wqueue);
-
-// IMPLEMENTAZIONE DELLE OPERAZIONI
-
-static long dev_ioctl(struct file *filp, unsigned int command, unsigned long param){
-   
-
-   long ret;
-   int minor = get_minor(filp);
-   int major = get_major(filp);
-
-
-   AUDIT{
-      printk(KERN_INFO "%s: somebody called an ioctl on dev with [major,minor] number [%d,%d] and command %u \n\n",MODNAME, major, minor, command);
-      printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
-   }
-
-   if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
-      printk("%s: can't read from invalid block device name, your filesystem is not mounted", MODNAME);
-      return -1;                          // return ENODEV ?
-   }
-
-   if(_IOC_TYPE(command) != MAGIC_UMSG) return -EINVAL;
-   
-   switch(command){
-
-      case PUT_DATA:
-         ret = dev_put_data(((struct put_args *) param)->source, ((struct put_args *) param)->size);
-         break;
-      
-      
-      case GET_DATA:
-         ret = dev_get_data(((struct get_args*)param)->offset, ((struct get_args*)param)->destination, ((struct get_args*)param)->size);
-         break;
-      
-      
-      case INVALIDATE_DATA:
-         ret = dev_invalidate_data(*((int*) param));
-         break;
-
-      
-      default:
-         return -EINVAL;
-         
-   }
-   
-   return ret;
-
-}
 
 
 
@@ -93,9 +43,7 @@ int dev_put_data(char* source, size_t size){
    struct block_node* selected_block = NULL;
 
 
-
    // get an invalid block to overwrite
-   
    for(i=0; i<NBLOCKS; i++){
       
       current_block = block_metadata[i];
@@ -291,7 +239,6 @@ ret:
 // INVALIDATE DATA
 
 int dev_invalidate_data(int offset){
-   printk("INVALIDATE DATA\n");
 
    int ret;
    struct block_node *cas;
@@ -306,7 +253,7 @@ int dev_invalidate_data(int offset){
    ret = 0;
    selected = &block_metadata[offset];   
    predecessor = valid_messages;                                                   
-
+   printk("INVALIDATE DATA\n");
                                                         
    // get write lock on the element to invalidate
    mutex_lock(&(selected->lock));
@@ -317,7 +264,7 @@ int dev_invalidate_data(int offset){
       goto end;
    }
    
-   printk("il blocco ha validità %d\n", get_validity(selected->val_next));
+   printk("il blocco ha validità %lu\n", get_validity(selected->val_next));
    if(block_device_name == NULL || strcmp(block_device_name, " ") == 0){
       printk("%s: can't write from invalid block device name, your filesystem is not mounted", MODNAME);
       goto error;                         // return ENODEV ? settare ERRNO ?
@@ -372,7 +319,7 @@ int dev_invalidate_data(int offset){
 	grace_period_threads = last_epoch & (~MASK); 
 
 	AUDIT
-	printk("%s: INVALIDATE (waiting %d readers on index = %d)\n", MODNAME, grace_period_threads, index);
+	printk("%s: INVALIDATE (waiting %lu readers on index = %d)\n", MODNAME, grace_period_threads, index);
 	
 	
    
@@ -418,7 +365,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    unsigned long my_epoch;
 
    AUDIT{
-      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %d\n",MODNAME, major, minor, len);
+      printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %lu\n",MODNAME, major, minor, len);
       printk(KERN_INFO "%s: %s is the block device name\n", MODNAME, block_device_name);
    }
 
@@ -440,11 +387,11 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    }
 
    // signal the presence of reader 
-   unsigned int into = (epoch) & (~MASK);
-   printk("old ctr: %ld\n", into);
+   // unsigned int into = (epoch) & (~MASK);
+   printk("old ctr: %ld\n", (epoch) & (~MASK));
    my_epoch = __sync_fetch_and_add(&epoch,1);
-   into = (epoch) & (~MASK);
-   printk("new ctr: %ld\n", into);
+   // into = (epoch) & (~MASK);
+   printk("new ctr: %ld\n", (epoch) & (~MASK));
 
    // check if the valid list is empty
    if(get_pointer(valid_messages->val_next) == change_validity(NULL)){
@@ -479,7 +426,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       if (bh->b_data != NULL){
       
          lenght = strlen(bh->b_data);
-         AUDIT printk(KERN_INFO " data: %s of len: %lu\n", bh->b_data, lenght);
+         AUDIT printk(KERN_INFO " data: %s of len: %d\n", bh->b_data, lenght);
 
 
          // allocate and use the temp buffer in order to modify 
@@ -570,5 +517,4 @@ const struct file_operations fops = {
   .read = dev_read,
   .open =  dev_open,
   .release = dev_release,
-  .unlocked_ioctl = dev_ioctl
 };

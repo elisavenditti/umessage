@@ -43,38 +43,20 @@ asmlinkage int sys_invalidate_data(int offset){
 #endif
     
 	int ret;
-	int* arg;
-	struct file *filp;
 	
-	AUDIT printk("%s: invocation of sys_invalidate_data\n",MODNAME);
-
-	arg = kmalloc(sizeof(int), GFP_KERNEL);
-    if(!arg){
-        printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n", MODNAME);
-        return -1;
-    }
-
-    // ret = copy_from_user(arg, &offset, sizeof(int));
-	*arg = offset;        
-    printk("block to invalidate is: %d\n", *arg);
-    
-
-	// open the device file
-
-	printk("opening device %s\n", DEV_NAME);
 	
-	filp = filp_open(DEV_NAME, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		printk("error in filp open");
-		return -1;
+	AUDIT {
+		printk("%s: invocation of sys_invalidate_data\n",MODNAME);
+		printk("block to invalidate is: %d\n", offset);
 	}
-	printk("device file opened");
 
-	
-	vfs_ioctl(filp, INVALIDATE_DATA, (unsigned long) arg);	
-	
-	filp_close(filp, NULL);		
-	return 0;
+	// TODO controlla se è montato il file-system !
+	// ...
+
+
+	// call the specific function in device driver
+	ret = dev_invalidate_data(offset);
+	return ret;
 }
 
 
@@ -88,20 +70,11 @@ asmlinkage int sys_put_data(char* source, size_t size){
 
 	int ret;
 	char* message;
-	struct file *filp;
-	struct put_args *args;
 
 	// TODO controlla se è montato il file-system !
-
-	printk("%s: invocation of sys_put_data\n",MODNAME);
-	args = kmalloc(sizeof(struct put_args), GFP_KERNEL);
-    if(!args){
-    	printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
-        return -1;
-    }
-
+	// ...
     
-    // alloco dinamicamente l'area di memoria per ospitare il messaggio, poi lo copio dallo spazio utente
+    // dynamic allocation of area to contain the message
     message = kmalloc(size+1, GFP_KERNEL);
     if (!message){
     	printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);
@@ -110,31 +83,14 @@ asmlinkage int sys_put_data(char* source, size_t size){
 
     ret = copy_from_user(message, source, size);
     message[size] = '\0';
+    printk("message: %s, len: %lu\n", message, size+1);
 
 
-    args->source = message;
-	args->size = size + 1;		// the insertion must include '/0'
-	     
-    printk("message: %s, len: %lu\n", message, ((struct put_args*)args)->size);
-
-
-	// open the device file
-
-	printk("opening device %s\n", DEV_NAME);
-	
-	filp = filp_open(DEV_NAME, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		printk("error in filp open");
-		return -1;
-	}
-	printk("device file opened");
-
-
-	vfs_ioctl(filp, PUT_DATA, (unsigned long) args);	
-	
-	filp_close(filp, NULL);		
-	return 0;
+	// call the specific function in device driver
+	ret = dev_put_data(message, size + 1);				// the insertion must include '/0'	
+	return ret;
 }
+
 
 
 
@@ -145,45 +101,20 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, char*, destination, size_t, size){
 asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 #endif
 
+	int ret;
 
-	struct file *filp;
-	struct get_args *args;
-
-	AUDIT printk("%s: invocation of sys_get_data\n",MODNAME);
-
+	AUDIT{
+		printk("%s: invocation of sys_get_data\n",MODNAME);
+		printk("destination: %px, len: %lu, block: %d\n", destination, size, offset);
+	}
 
 	// TODO controlla se è montato il file-system !
-
-	args = kmalloc(sizeof(struct get_args), GFP_KERNEL);
-    if(!args){
-    	printk("%s: kmalloc error, unable to allocate memory for receiving the user arguments\n",MODNAME);
-        return -1;
-    } 
-    
-	
-	args->offset = offset;
-	args->destination = destination;
-	args->size = size;
-    printk("destination: %px, len: %lu, block: %d\n", ((struct get_args*)args)->destination, ((struct get_args*)args)->size, ((struct get_args*)args)->offset);
-
-
-	// open the device file
-
-	printk("opening device %s\n", DEV_NAME);
-	
-	filp = filp_open(DEV_NAME, O_RDONLY, 0);
-	if (IS_ERR(filp)) {
-		printk("error in filp open");
-		return -1;
-	}
-	printk("device file opened");
+	// ...
 
 	
-
-	vfs_ioctl(filp, GET_DATA, (unsigned long) args);	
-	
-	filp_close(filp, NULL);		
-	return 0;
+	// call the specific function in device driver
+	ret = dev_get_data(offset, destination, size);
+	return ret;
 }
 
 
