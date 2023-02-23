@@ -20,7 +20,6 @@ static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
 
 int Major;
 DECLARE_WAIT_QUEUE_HEAD(wqueue);
-// static DEFINE_MUTEX(device_state);
 
 
 // PUT DATA
@@ -145,7 +144,18 @@ int dev_put_data(char* source, size_t size){
    // the update is not atomic: the lock protect concurrent updates
 
    // strncpy(data_offset(bh->b_data), source, size);  
-   strncpy(bh->b_data, source, size);  
+   strncpy(bh->b_data, source, DEFAULT_BLOCK_SIZE);//size);
+
+   mark_buffer_dirty(bh);
+
+#ifdef FORCE_SYNC
+   // force the synchronous write on the device
+   if(sync_dirty_buffer(bh) == 0)
+      printk("SUCCESS IN SYNCHRONOUS WRITE");
+   else
+      printk("FAILURE IN SYNCHRONOUS WRITE");
+#endif
+
    brelse(bh);
 
    //STAMPA PROVA
@@ -469,6 +479,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    ret = copy_to_user(buff + copied, temp, 1);
    copied =  copied + 1 - ret;
    ret = len;
+
 read_end:   
    index = (my_epoch & MASK) ? 1 : 0;           
 	printk("reset ctr index %d (before): %ld\n", index, pending[index]);
@@ -490,16 +501,21 @@ read_end:
 
 static int dev_open(struct inode *inode, struct file *file) {
 
-   // TODO
+   printk(KERN_INFO "%s: thread %d trying to open file\n",MODNAME,current->pid);
+   
+   // not reserving the bdev_usage counter because it is not used
+   if(bdev == NULL){
+      printk("%s: NO DEVICE MOUNTED", MODNAME);
+      return -ENODEV;
+   }   
 
-   // this device file is single instance
-   // if (!mutex_trylock(&device_state)) {
-	// 	return -EBUSY;
-   // }
+   // block every access in write mode to the file - read only FS
+   if(file->f_mode & FMODE_WRITE){
+      printk("%s: FORBIDDEN WRITE", MODNAME);
+      return -EROFS;
+   }
 
-   printk(KERN_INFO "%s: device file successfully opened by thread %d\n",MODNAME,current->pid);
-   printk("%s: TODO vedi se introdurre sincronizzazione\n",MODNAME);
-   //device opened by a default nop
+
    return 0;
 }
 
@@ -508,11 +524,14 @@ static int dev_open(struct inode *inode, struct file *file) {
 
 static int dev_release(struct inode *inode, struct file *file) {
 
-   // TODO
-   // mutex_unlock(&device_state);
+   printk(KERN_INFO "%s: thread %d trying to close device file\n",MODNAME,current->pid);
+   
+   // not reserving the bdev_usage counter because it is not used
+   if(bdev == NULL){
+      printk("%s: NO DEVICE MOUNTED", MODNAME);
+      return -ENODEV;
+   }
 
-   printk(KERN_INFO "%s: device file closed by thread %d\n",MODNAME,current->pid);
-   //device closed by default nop
    return 0;
 
 }

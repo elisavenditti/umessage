@@ -9,7 +9,7 @@ CONFIGURAZIONE
 * configurare nel makefile il numero effettivo di blocchi da inserire nell'immagine (sb e inode inclusi)
 * in umessage_header.h: scrivere in NBLOCKS il numero di blocchi di dati effettivamente inseriti nell'immagine (valore del punto precedente-2)
                         scrivere in MAX_BLOCKS il numero massimo di blocchi gestibili dal driver
-
+                        definire SYNC se si vuole che la scrittura sul device sia sincrona
 
 
 Modulo sviluppato

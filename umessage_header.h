@@ -5,6 +5,8 @@
 #include <linux/ioctl.h>
 
 
+#define FORCE_SYNC
+
 
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)

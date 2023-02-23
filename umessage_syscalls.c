@@ -76,12 +76,14 @@ asmlinkage int sys_put_data(char* source, size_t size){
 	if(size > DEFAULT_BLOCK_SIZE) return -EINVAL;
 	
     // dynamic allocation of area to contain the message
-    message = kmalloc(size+1, GFP_KERNEL);
+    // message = kmalloc(size+1, GFP_KERNEL);
+	message = kzalloc(DEFAULT_BLOCK_SIZE, GFP_KERNEL);
     if (!message){
     	printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);
         return -ENOMEM;
     }
 
+	// user is allowed to write only size bytes
     ret = copy_from_user(message, source, size);
 	len = strlen(message);
 	if(len<size) size = len;

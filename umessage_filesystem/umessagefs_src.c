@@ -114,8 +114,13 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     int len;
     struct dentry *ret;
 
-    if(dimension_check()) return -1;
-    
+    // check if the driver can manage the messages
+    if(dimension_check()){
+        printk("%s: error - the device driver can support up to %d blocks\n", MODNAME, MAXBLOCKS);
+        return -EINVAL;
+    }
+
+    // check if the FS is already mounted
     if(bdev != NULL){
         printk("%s: error - the device driver can support single mount at time\n", MODNAME);
         return -EBUSY;
@@ -141,12 +146,11 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
         bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
 
         if(bdev == NULL){
-            printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
+            printk("%s: can't get the struct block_device associated to %s", MODNAME, block_device_name);
             return -EINVAL;
         }
-        // unsigned long num_blocks = bdev_logical_block_size(bdev);// * bdev->bd_inode->i_blocks;
-        // sector_t blocks = bdev_nr_blocks(bdev);
-        printk("%s: singlefilefs is succesfully mounted on from device %s\n",MODNAME,dev_name);
+        
+        printk("%s: singlefilefs is succesfully mounted on from device %s\n", MODNAME, dev_name);
 
     }
     return ret;
