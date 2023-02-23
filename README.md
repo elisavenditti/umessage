@@ -5,6 +5,12 @@ Modulo per la ricerca della syscall table
 1) make all                                 ho eliminato l'inserimento automatico di una syscall
 2) sudo insmod the_usctm.ko
 
+CONFIGURAZIONE
+* configurare nel makefile il numero effettivo di blocchi da inserire nell'immagine (sb e inode inclusi)
+* in umessage_header.h: scrivere in NBLOCKS il numero di blocchi di dati effettivamente inseriti nell'immagine (valore del punto precedente-2)
+                        scrivere in MAX_BLOCKS il numero massimo di blocchi gestibili dal driver
+
+
 
 Modulo sviluppato
 

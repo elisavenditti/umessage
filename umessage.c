@@ -42,7 +42,7 @@ module_param(the_syscall_table, ulong, 0660);
 
 // STRUTTURA DATI MANTENENTE I METADATI DEI BLOCCHI
 
-struct block_node block_metadata[NBLOCKS];
+struct block_node block_metadata[MAXBLOCKS];
 struct block_node* valid_messages;
 dev_t dev;
 unsigned long pending[2];
@@ -112,7 +112,7 @@ int init_module(void) {
         
         // inizializzazione dell'array
 
-        for(k=0; k<NBLOCKS; k++){
+        for(k=0; k<MAXBLOCKS; k++){
                               
                 
                 block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)

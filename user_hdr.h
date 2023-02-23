@@ -7,7 +7,6 @@
 #define DEFAULT_BLOCK_SIZE 4096
 #define METADATA_SIZE sizeof(void*)
 #define DATA_SIZE DEFAULT_BLOCK_SIZE - METADATA_SIZE
-#define NBLOCKS 5
 #define change_validity(ptr)    (void*)((unsigned long) ptr^MASK)
 #define MASK 0x8000000000000000
 
@@ -19,7 +18,9 @@ char* testo[] = {
 "Muta pensando all’ultima Ora dell’uom fatale; Nè sa quando una simile Orma di piè mortale La sua cruenta polvere A calpestar verrà.", 
 "Lui folgorante in solio Vide il mio genio e tacque; Quando, con vece assidua, Cadde, risorse e giacque, Di mille voci al sonito Mista la sua non ha:",
 "Vergin di servo encomio E di codardo oltraggio, Sorge or commosso al subito Sparir di tanto raggio: E scioglie all’urna un cantico Che forse non morrà.",
-"Dall’Alpi alle Piramidi, Dal Manzanarre al Reno, Di quel securo il fulmine Tenea dietro al baleno; Scoppiò da Scilla al Tanai, Dall’uno all’altro mar." };
+"Dall’Alpi alle Piramidi, Dal Manzanarre al Reno, Di quel securo il fulmine Tenea dietro al baleno; Scoppiò da Scilla al Tanai, Dall’uno all’altro mar.",
+"ciao sono lucia e sono una sirena", "può sembrare strano ma è una storia vera", "la leggenda su di noi è già la verità ...", 
+"dragon ball gt, siamo tutti qui", "non c'è un drago più super di così", "dragon ball perchè, ogni sfera è ...", "l'energia che risplende in te!" };
 
 
 #endif

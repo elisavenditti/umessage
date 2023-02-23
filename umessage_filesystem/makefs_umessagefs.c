@@ -20,7 +20,7 @@
 
 int main(int argc, char *argv[])
 {
-	int i, fd, nbytes;
+	int i, fd, nbytes, nblocks;
 	ssize_t ret;
 	struct onefilefs_sb_info sb;
 	struct onefilefs_inode root_inode;
@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 	char *block_padding;
 
 
-	if (argc != 2) {
+	if (argc != 3) {
 		printf("Usage: mkfs-singlefilefs <device>\n");
 		return -1;
 	}
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-
+	nblocks = strtol(argv[2], NULL, 10);
 
 	// pack the superblock
 
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 
 	file_inode.mode = S_IFREG;
 	file_inode.inode_no = SINGLEFILEFS_FILE_INODE_NUMBER;
-	file_inode.file_size = NBLOCKS*DEFAULT_BLOCK_SIZE;
+	file_inode.file_size = nblocks*DEFAULT_BLOCK_SIZE;
 	printf("File size is %ld\n",file_inode.file_size);
 	fflush(stdout);
 	ret = write(fd, (char *)&file_inode, sizeof(file_inode));
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
 
 	// write file datablock
 	
-	for(i=0; i<NBLOCKS; i++){
+	for(i=0; i<nblocks; i++){
 		// // metadata
 		// unsigned long metadata = change_validity(NULL);
     	// ret = write(fd, &metadata, METADATA_SIZE);
@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
 			close(fd);
 			return -1;
 		}
-		printf("(%d/%d) File datablock has been written succesfully.\n", i+1, NBLOCKS);
+		printf("(%d/%d) File datablock has been written succesfully.\n", i+1, nblocks);
 
 	}
 

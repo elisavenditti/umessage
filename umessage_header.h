@@ -13,7 +13,8 @@
 #define DEFAULT_BLOCK_SIZE 4096
 #define METADATA_SIZE sizeof(void*)
 #define DATA_SIZE DEFAULT_BLOCK_SIZE - METADATA_SIZE
-#define NBLOCKS 5
+#define NBLOCKS 2
+#define MAXBLOCKS 5
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
@@ -41,7 +42,7 @@ struct bdev_node {
 
 
 extern const struct file_operations fops;
-extern struct block_node block_metadata[NBLOCKS];
+extern struct block_node block_metadata[MAXBLOCKS];
 extern struct block_node* valid_messages;
 extern int Major;
 extern unsigned long pending[2];

@@ -25,6 +25,7 @@ static struct dentry_operations singlefilefs_dentry_ops = {
 };
 
 void do_init(void);
+int dimension_check(void);
 
 
 int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {   
@@ -34,7 +35,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     struct onefilefs_sb_info *sb_disk;
     struct timespec64 curr_time;
     uint64_t magic;
-
+    
 
     // Unique identifier of the filesystem
     sb->s_magic = MAGIC;
@@ -113,6 +114,8 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     int len;
     struct dentry *ret;
 
+    if(dimension_check()) return -1;
+    
     if(bdev != NULL){
         printk("%s: error - the device driver can support single mount at time\n", MODNAME);
         return -EBUSY;
@@ -141,11 +144,38 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
             printk("%s: can't get the struct block_device associated to %s",MODNAME, block_device_name);
             return -EINVAL;
         }
-
+        // unsigned long num_blocks = bdev_logical_block_size(bdev);// * bdev->bd_inode->i_blocks;
+        // sector_t blocks = bdev_nr_blocks(bdev);
         printk("%s: singlefilefs is succesfully mounted on from device %s\n",MODNAME,dev_name);
 
     }
     return ret;
+}
+
+int dimension_check(void){
+    
+    struct file *filp;
+    loff_t size;
+    sector_t num_blocks;
+
+    filp = filp_open("./image", O_RDONLY, 0);
+    if (IS_ERR(filp)) {
+        printk("%s: Error opening image file\n", MODNAME);
+        return 1;
+    }
+
+    size = vfs_llseek(filp, 0, SEEK_END);
+    if (size < 0) {
+        printk("%s: Error getting image file size\n", MODNAME);
+        filp_close(filp, NULL);
+        return 1;
+    }
+    num_blocks = (size / DEFAULT_BLOCK_SIZE) -2;        //exclude metadata blocks
+    printk("num_blocks = %llu, supported blocks = %d\n", num_blocks, MAXBLOCKS);
+    
+    if(num_blocks>MAXBLOCKS) return 1;
+    return 0;
+
 }
 
 
