@@ -142,9 +142,10 @@ int dev_put_data(char* source, size_t size){
 
    
    // the update is not atomic: the lock protect concurrent updates
-
-   // strncpy(data_offset(bh->b_data), source, size);  
-   strncpy(bh->b_data, source, DEFAULT_BLOCK_SIZE);//size);
+   // strncpy(((struct bdev_node *)bh->b_data)->data, source, DATA_SIZE);  
+   strncpy(bh->b_data, source, DATA_SIZE);  
+   // strncpy(data_offset(bh->b_data), source, DATA_SIZE);  
+   // strncpy(bh->b_data, source, DEFAULT_BLOCK_SIZE);//size);
 
    mark_buffer_dirty(bh);
 
@@ -236,6 +237,7 @@ int dev_get_data(int offset, char * destination, size_t size){
       AUDIT printk(KERN_INFO "%s: [blocco %d] ho letto -> %s\n", MODNAME, block_to_read, bh->b_data);  
       ret = copy_to_user(destination, bh->b_data, size);
       return_val = size - ret;
+      if(strlen(bh->b_data)<size) return_val = strlen(bh->b_data);
    }
 
    else return_val = 0;
@@ -368,21 +370,21 @@ inv_end:
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
 
-   int ret; 
-   int index;
-   int lenght;
-   int copied;
-   char temp[] = "";
+
+   char* data;
    char* temp_buf;
+   char temp[] = "";
    int block_to_read;
+   unsigned long my_epoch;
    struct block_node *next;
    struct block_node *curr;
    int minor = get_minor(filp);
    int major = get_major(filp);
+   
    struct buffer_head *bh = NULL;
    struct block_device *temp_bdev;
-
-   unsigned long my_epoch;
+   int ret, index, lenght, copied;
+   
 
    if(*off != 0) return 0;
    copied = 0;
@@ -401,8 +403,6 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       printk("READ FILE\n");
       printk(KERN_INFO "%s: somebody called a read on dev with [major,minor] number [%d,%d], len = %lu\n",MODNAME, major, minor, len);
    }
-
-   
 
 
    // signal the presence of reader 
@@ -441,10 +441,11 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       }
 
       if (bh->b_data != NULL){
-      
-         lenght = strlen(bh->b_data);
+         
+         data = ((struct bdev_node*) (bh->b_data))->data;
+         lenght = strlen/*(data);//*/(bh->b_data);
          AUDIT printk(KERN_INFO " data: %s of len: %d\n", bh->b_data, lenght);
-
+         // AUDIT printk(KERN_INFO " data: %s of len: %d\n", ((struct bdev_node*) bh->b_data)->data, lenght);
 
          // allocate and use the temp buffer in order to modify 
          // the retrieved message with the termination character
@@ -457,6 +458,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          }
 
          strncpy(temp_buf, bh->b_data, lenght);
+         // strncpy(temp_buf, data, lenght);
          temp_buf[lenght] = '\n';
       
          ret = copy_to_user(buff + copied, temp_buf, lenght+1);

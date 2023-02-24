@@ -72,12 +72,12 @@ asmlinkage int sys_put_data(char* source, size_t size){
 	int len;
 	char* message;
 
-    // if(size > DATA_SIZE) return -EINVAL;
-	if(size > DEFAULT_BLOCK_SIZE) return -EINVAL;
+    if(size > DATA_SIZE) return -EINVAL;
+	// if(size > DEFAULT_BLOCK_SIZE) return -EINVAL;
 	
     // dynamic allocation of area to contain the message
     // message = kmalloc(size+1, GFP_KERNEL);
-	message = kzalloc(DEFAULT_BLOCK_SIZE, GFP_KERNEL);
+	message = kzalloc(DATA_SIZE, GFP_KERNEL);
     if (!message){
     	printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);
         return -ENOMEM;
@@ -111,15 +111,13 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 #endif
 
 	int ret;
-	// if(size>DATA_SIZE) size = DATA_SIZE;
-	if(size>DEFAULT_BLOCK_SIZE) size = DEFAULT_BLOCK_SIZE;
+	if(size > DATA_SIZE) size = DATA_SIZE;
+	else if(size < 0 || offset>NBLOCKS || offset<0) return -EINVAL;
 
 	AUDIT{
 		printk("%s: invocation of sys_get_data\n",MODNAME);
 		printk("destination: %px, len: %lu, block: %d\n", destination, size, offset);
 	}
-
-
 	
 	// call the specific function in device driver
 	ret = dev_get_data(offset, destination, size);

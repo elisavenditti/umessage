@@ -3,15 +3,20 @@
 
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)
-#define DEVICE_NAME "umessage"  /* Device file name in /dev/ - not mandatory  */
+#define DEVICE_NAME "umessage"
 #define DEFAULT_BLOCK_SIZE 4096
-#define METADATA_SIZE sizeof(void*)
+#define METADATA_SIZE sizeof(unsigned int)
 #define DATA_SIZE DEFAULT_BLOCK_SIZE - METADATA_SIZE
 #define change_validity(ptr)    (void*)((unsigned long) ptr^MASK)
 #define MASK 0x8000000000000000
 
 
-
+// integer define
+#define VALID_MASK 0x80000000
+#define INVALID_MASK (~VALID_MASK)  //0x7FFFFFFF
+#define set_valid(i)          ((unsigned int) (i) | VALID_MASK)
+#define set_invalid(i)        ((unsigned int) (i) & INVALID_MASK)
+#define get_validity_int(i)   ((unsigned int) (i) >> (sizeof(unsigned int) * 8 - 1))
 
 char* testo[] = {
 "Ei fu. Siccome immobile, Dato il mortal sospiro, Stette la spoglia immemore Orba di tanto spiro, Così percossa, attonita La terra al nunzio sta,",

@@ -43,6 +43,7 @@ int main(int argc, char** argv){
 			
 			arg = strtol(argv[2],NULL,10);
 			ret = syscall(INVALIDATE, arg);
+			printf("INVALIDATE HA RITORNATO %d\n", ret);
 			break;
 		
 		
@@ -50,6 +51,7 @@ int main(int argc, char** argv){
 			// put data	- input P nuova_stinga
 			
 			ret = syscall(PUT, argv[2], strlen(argv[2]));
+			printf("il blocco è stato inserito nel blocco %d\n", ret);
 			break;
 		
 		
@@ -62,7 +64,7 @@ int main(int argc, char** argv){
 			char destination[] = "";
 			printf("voglio mettere in destination (%p) i dati letti\n", destination);
 			ret = syscall(GET, arg, destination, size);
-			printf("ho letto %ld byte dal blocco %ld: '%s'\n", size, arg, destination);
+			printf("ho letto %ld byte dal blocco %ld: '%s'\n", ret, arg, destination);
 			break;
 		
 		case 'O':

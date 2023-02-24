@@ -14,14 +14,17 @@
 	This makefs will write the following information onto the disk
 	- BLOCK 0, superblock;
 	- BLOCK 1, inode of the unique file (the inode for root is volatile);
-	- BLOCK 2, ..., datablocks of the unique file 
+	- BLOCK 2, metadata + data
+	- ...
+	- BLOCK N, metadata + data
 */
 
 
-int main(int argc, char *argv[])
-{
-	int i, fd, nbytes, nblocks;
+int main(int argc, char *argv[]){
+
 	ssize_t ret;
+	int i, fd, nbytes, nblocks;
+	unsigned int metadata, next;
 	struct onefilefs_sb_info sb;
 	struct onefilefs_inode root_inode;
 	struct onefilefs_inode file_inode;
@@ -98,20 +101,10 @@ int main(int argc, char *argv[])
 	// write file datablock
 	
 	for(i=0; i<nblocks; i++){
-		// // metadata
-		// unsigned long metadata = change_validity(NULL);
-    	// ret = write(fd, &metadata, METADATA_SIZE);
-		// // ret = write(fd, change_validity(NULL), METADATA_SIZE);
-		// if (ret != METADATA_SIZE) {
-		// 	printf("Writing file metadata has failed.\n");
-		// 	close(fd);
-		// 	return -1;
-		// }
 
 		// data
 		nbytes = strlen(testo[i]);
-		// if(nbytes > DATA_SIZE){
-		if(nbytes > DEFAULT_BLOCK_SIZE){
+		if(nbytes > DATA_SIZE){
 			printf("Data dimension not enough to contain text.\n");
 			return -1;
 		}
@@ -123,8 +116,7 @@ int main(int argc, char *argv[])
 		}
 		
 		// padding
-		// nbytes = DEFAULT_BLOCK_SIZE - strlen(testo[i]) - METADATA_SIZE;
-		nbytes = DEFAULT_BLOCK_SIZE - strlen(testo[i]);
+		nbytes = DEFAULT_BLOCK_SIZE - strlen(testo[i]) - METADATA_SIZE;
 		block_padding = malloc(nbytes);
 		ret = write(fd, block_padding, nbytes);
 		if (ret != nbytes) {
@@ -132,6 +124,23 @@ int main(int argc, char *argv[])
 			close(fd);
 			return -1;
 		}
+
+		// metadata	- all blocks are valid and point to the next one,
+		// exept for the last one which has next pointer equal to NULL.
+		// next = i+3 because it considers also the superblock and the 
+		// inode in order to avoid confilcts in 0.
+
+		next = (i+1 != nblocks) ? i+3 : 0;						
+
+		metadata = set_valid(next);
+    	ret = write(fd, &metadata, METADATA_SIZE);
+		if (ret != METADATA_SIZE) {
+			printf("Writing file metadata has failed.\n");
+			close(fd);
+			return -1;
+		}
+
+
 		printf("(%d/%d) File datablock has been written succesfully.\n", i+1, nblocks);
 
 	}

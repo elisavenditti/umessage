@@ -10,11 +10,12 @@
 
 #include "umessagefs.h"
 
+
+
 unsigned long bdev_usage = 0;
 struct block_device *bdev = NULL;
 char block_device_name[20] = " ";
 DECLARE_WAIT_QUEUE_HEAD(umount_queue);
-
 
 
 static struct super_operations singlefilefs_super_ops = {
@@ -24,7 +25,10 @@ static struct super_operations singlefilefs_super_ops = {
 static struct dentry_operations singlefilefs_dentry_ops = {
 };
 
-void do_init(void);
+
+// utils functions
+int do_init(void);
+int do_persistence(struct block_device*);
 int dimension_check(void);
 
 
@@ -94,12 +98,14 @@ static void singlefilefs_kill_superblock(struct super_block *s) {
     struct block_device *temp_bdev = bdev;
     
     strncpy(block_device_name, " ", 1);
-    block_device_name[1]='\0';
+    block_device_name[1] = '\0';
     
     bdev = NULL;
-    printk("%s: waiting the pending threads ...", MODNAME);
+    printk("%s: waiting the pending threads (%d)...", MODNAME, bdev_usage);
     wait_event_interruptible(umount_queue, bdev_usage == 0);
     
+    // update metadata in the device - no concurrency
+    do_persistence(temp_bdev);
     blkdev_put(temp_bdev, FMODE_READ);
     kill_block_super(s);
     
@@ -133,9 +139,7 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     
     else {
 
-
         // get the name of the loop device in order to access data later on        
-        // do_init();
         len = strlen(dev_name);        
         strncpy(block_device_name, dev_name, len);
         block_device_name[len]='\0';
@@ -149,12 +153,29 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
             printk("%s: can't get the struct block_device associated to %s", MODNAME, block_device_name);
             return -EINVAL;
         }
+
+        // retrieve the state of blocks from device
+        do_init();
         
         printk("%s: singlefilefs is succesfully mounted on from device %s\n", MODNAME, dev_name);
 
     }
     return ret;
 }
+
+
+
+// file system structure
+static struct file_system_type onefilefs_type = {
+	.owner = THIS_MODULE,
+    .name           = "singlefilefs",
+    .mount          = singlefilefs_mount,
+    .kill_sb        = singlefilefs_kill_superblock,
+};
+
+
+
+
 
 int dimension_check(void){
     
@@ -183,45 +204,134 @@ int dimension_check(void){
 }
 
 
-// void do_init(void){
+int do_init(void){
 
-//     int i;
-//     int block_to_read;
-//     char* message;
-//     struct buffer_head *bh = NULL;
-//     struct block_node current_block;
-//     struct block_node* selected_block = NULL;
-//     struct bdev_node* bnode = NULL;
+    // initialize the kernel structure to manage blocks with data from device
+    // no concurrency considered: it is supported single filesystem mount
 
-//     i=0;
+    int i;
+    int next;
+    int valid;
+    int block_to_read;
+    struct buffer_head *bh = NULL;
+    struct block_node* successor;
+    struct block_node* selected_block = NULL;
+    struct bdev_node* bnode = NULL;
+
+    // previous of each block
+    int prev[NBLOCKS] = {[0 ... NBLOCKS-1] = HEAD};
+
+    for(i=0; i<NBLOCKS; i++){
+
+        block_to_read = offset(i);
+        bh = (struct buffer_head *) sb_bread(bdev->bd_super, block_to_read);
+        if(!bh){
+            return -EIO;
+        }
+        if (bh->b_data != NULL){
+            AUDIT printk("%s: [blocco %d]\n", MODNAME, block_to_read);   
+
+            bnode = (struct bdev_node*) bh->b_data;
+            next = set_invalid(bnode->val_next);
+            valid = get_validity_int(bnode->val_next);
+            
+            AUDIT{
+                printk("%s:     next = %d\n", MODNAME, next);
+                printk("%s:     validity = %d\n", MODNAME, valid);
+                printk("%s:     message = %s\n", MODNAME, bnode->data);
+            }
+
+            // first step - get the next value (VALID)
+            if(next == NULL) successor = change_validity(NULL);
+            else successor = &block_metadata[next-2];
+
+            // second step - check the validity
+            if(!valid){
+                prev[i] = INVALID;
+                change_validity(successor);
+            }
+            
+            // -2 because next takes into account also the superblock and the inode
+            else if (next != 0) prev[next-2] = i;
+            
+            
+            block_metadata[i].val_next = successor;
+
+            printk("%s:     block_metadata[i].val_next = %px\n", MODNAME, block_metadata[i].val_next);
+            printk("%s:     &block_metadata[next] = %px\n", MODNAME, successor);
+            brelse(bh);            
+        }
+
     
+    }
 
-//     while(true){
-//         block_to_read = offset(i);
-//         bh = (struct buffer_head *)sb_bread(bdev->bd_super, block_to_read);
-//         if(!bh){
-//             return -EIO;
-//         }
-//         if (bh->b_data != NULL){
-//             AUDIT printk(KERN_INFO "%s: [blocco %d] valore vecchio: %s\n", MODNAME, block_to_read, bh->b_data);   
-
-//             bnode = bh->bdata;
-//             block_metadata[i].val_next = bnode->val_next;
-//             brelse(bh);
-//         }
-//         i++;
-//         if (i>= NBLOCKS){
-
-//         }
-//     }
-// }
+    // update the pointer to the head element
+    for(i=0; i<NBLOCKS; i++){
+        if(prev[i] == HEAD){
+            valid_messages->val_next = &block_metadata[i];
+            AUDIT printk("%s: HEAD AT %d\n", MODNAME, i);
+        }
+    }
+    return 0;
+}
 
 
-// file system structure
-static struct file_system_type onefilefs_type = {
-	.owner = THIS_MODULE,
-    .name           = "singlefilefs",
-    .mount          = singlefilefs_mount,
-    .kill_sb        = singlefilefs_kill_superblock,
-};
+
+int do_persistence(struct block_device *temp_bdev){
+
+    // Update device content with kernel structure's data
+    // threads cannot modify values in cache because global bdev is NULL
+    // temp_bdev is the last reference to the struct and this thread is the only owner
+
+    int i;
+    int next;
+    int valid;
+    int block_to_write;
+    struct buffer_head *bh = NULL;
+    struct block_node* successor;
+    struct block_node* selected_block = NULL;
+    struct bdev_node* bnode = NULL;
+
+    
+    printk("PERSISTENCE CALLED\n");
+    for(i=0; i<NBLOCKS; i++){
+
+        block_to_write = offset(i);
+        bh = (struct buffer_head *) sb_bread(temp_bdev->bd_super, block_to_write);
+        if(!bh){
+            return -EIO;
+        }
+
+        if (bh->b_data != NULL){
+            printk("%s:[blocco %d]\n", MODNAME, block_to_write);   
+
+            valid = get_validity(block_metadata[i].val_next);
+            successor = get_pointer(block_metadata[i].val_next);
+
+            // if successor was NULL the get_pointer operation set the leftmost bit to 1
+            if(successor == change_validity(NULL)) next = NULL;
+            else next = successor->num + 2;
+            printk("%s:     next = %d\n", MODNAME, next);
+            printk("%s:     validity = %d\n", MODNAME, valid);
+
+            
+            if(valid)   next = set_valid(next);
+            else        next = set_invalid(next);
+
+            // write into cache and flush data to device
+            memcpy(&(((struct bdev_node *)bh->b_data)->val_next), &next, sizeof(unsigned int));            
+            // memcpy(bh->b_data, &next, sizeof(unsigned int));
+            mark_buffer_dirty(bh);
+            if(sync_dirty_buffer(bh) == 0) printk("SUCCESS IN SYNCHRONOUS WRITE");
+            else printk("FAILURE IN SYNCHRONOUS WRITE");
+            
+            
+            brelse(bh);
+        }
+    }
+
+    return 0;
+}
+
+
 
