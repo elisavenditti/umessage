@@ -10,11 +10,9 @@
 
 #include "umessagefs.h"
 
+struct bdev_metadata bdev_md    __attribute__((aligned(64))) = {0, NULL};
+struct mount_metadata md        __attribute__((aligned(64))) = {0, " "};
 
-
-unsigned long bdev_usage = 0;
-struct block_device *bdev = NULL;
-char block_device_name[20] = " ";
 DECLARE_WAIT_QUEUE_HEAD(umount_queue);
 
 
@@ -95,20 +93,21 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
 }
 
 static void singlefilefs_kill_superblock(struct super_block *s) {
-    struct block_device *temp_bdev = bdev;
+    struct block_device *temp_bdev = bdev_md.bdev;
     
-    strncpy(block_device_name, " ", 1);
-    block_device_name[1] = '\0';
+    strncpy(md.block_device_name, " ", 1);
+    md.block_device_name[1] = '\0';
     
-    bdev = NULL;
-    printk("%s: waiting the pending threads (%d)...", MODNAME, bdev_usage);
-    wait_event_interruptible(umount_queue, bdev_usage == 0);
+    bdev_md.bdev = NULL;
+    printk("%s: waiting the pending threads (%ld)...", MODNAME, bdev_md.bdev_usage);
+    wait_event_interruptible(umount_queue, bdev_md.bdev_usage == 0);
     
     // update metadata in the device - no concurrency
     do_persistence(temp_bdev);
     blkdev_put(temp_bdev, FMODE_READ);
     kill_block_super(s);
-    
+    md.mounted = 0;
+
     printk(KERN_INFO "%s: singlefilefs unmount succesful.\n",MODNAME);
     return;
 }
@@ -117,20 +116,30 @@ static void singlefilefs_kill_superblock(struct super_block *s) {
 // called on file system mounting 
 struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, const char *dev_name, void *data) {
 
-    int len;
+    int len, old_mount;
     struct dentry *ret;
 
     // check if the driver can manage the messages
     if(dimension_check()){
         printk("%s: error - the device driver can support up to %d blocks\n", MODNAME, MAXBLOCKS);
-        return -EINVAL;
+        // return -EINVAL;
+        return NULL;
     }
 
-    // check if the FS is already mounted
-    if(bdev != NULL){
-        printk("%s: error - the device driver can support single mount at time\n", MODNAME);
-        return -EBUSY;
+    // check if the FS is already mounted - with compare and swap there's not the issue of concurrent checks    
+    old_mount = __sync_val_compare_and_swap(&(md.mounted),0,1);
+    if(old_mount == 1){
+        // FAILURE - new value returned
+        printk("%s: error - the device driver can support single mount at time (mounted=%d)\n", MODNAME, md.mounted);
+        // return -EBUSY;
+        return NULL;
     }
+
+    // SUCCESS - old value returned
+    printk("%s: mounted set to %d\n", MODNAME, md.mounted);
+    
+
+
     
     ret = mount_bdev(fs_type, flags, dev_name, data, singlefilefs_fill_super);
 
@@ -141,17 +150,18 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
 
         // get the name of the loop device in order to access data later on        
         len = strlen(dev_name);        
-        strncpy(block_device_name, dev_name, len);
-        block_device_name[len]='\0';
+        strncpy(md.block_device_name, dev_name, len);
+        md.block_device_name[len] = '\0';
 
 
         // get the associated block device
 
-        bdev = blkdev_get_by_path(block_device_name, FMODE_READ|FMODE_WRITE, NULL);
+        bdev_md.bdev = blkdev_get_by_path(md.block_device_name, FMODE_READ|FMODE_WRITE, NULL);
 
-        if(bdev == NULL){
-            printk("%s: can't get the struct block_device associated to %s", MODNAME, block_device_name);
-            return -EINVAL;
+        if(bdev_md.bdev == NULL){
+            printk("%s: can't get the struct block_device associated to %s", MODNAME, md.block_device_name);
+            // return -EINVAL;
+            return NULL;
         }
 
         // retrieve the state of blocks from device
@@ -183,7 +193,7 @@ int dimension_check(void){
     loff_t size;
     sector_t num_blocks;
 
-    filp = filp_open("./image", O_RDONLY, 0);
+    filp = filp_open(PATH_TO_IMAGE, O_RDONLY, 0);
     if (IS_ERR(filp)) {
         printk("%s: Error opening image file\n", MODNAME);
         return 1;
@@ -196,7 +206,7 @@ int dimension_check(void){
         return 1;
     }
     num_blocks = (size / DEFAULT_BLOCK_SIZE) -2;        //exclude metadata blocks
-    printk("num_blocks = %llu, supported blocks = %d\n", num_blocks, MAXBLOCKS);
+    printk("%s: num_blocks = %llu, supported blocks = %d\n", MODNAME, num_blocks, MAXBLOCKS);
     
     if(num_blocks>MAXBLOCKS) return 1;
     return 0;
@@ -215,7 +225,6 @@ int do_init(void){
     int block_to_read;
     struct buffer_head *bh = NULL;
     struct block_node* successor;
-    struct block_node* selected_block = NULL;
     struct bdev_node* bnode = NULL;
 
     // previous of each block
@@ -224,7 +233,7 @@ int do_init(void){
     for(i=0; i<NBLOCKS; i++){
 
         block_to_read = offset(i);
-        bh = (struct buffer_head *) sb_bread(bdev->bd_super, block_to_read);
+        bh = (struct buffer_head *) sb_bread((bdev_md.bdev)->bd_super, block_to_read);
         if(!bh){
             return -EIO;
         }
@@ -242,13 +251,13 @@ int do_init(void){
             }
 
             // first step - get the next value (VALID)
-            if(next == NULL) successor = change_validity(NULL);
+            if(next == 0) successor = change_validity(NULL);
             else successor = &block_metadata[next-2];
 
             // second step - check the validity
             if(!valid){
                 prev[i] = INVALID;
-                change_validity(successor);
+                successor = change_validity(successor);
             }
             
             // -2 because next takes into account also the superblock and the inode
@@ -289,8 +298,6 @@ int do_persistence(struct block_device *temp_bdev){
     int block_to_write;
     struct buffer_head *bh = NULL;
     struct block_node* successor;
-    struct block_node* selected_block = NULL;
-    struct bdev_node* bnode = NULL;
 
     
     printk("PERSISTENCE CALLED\n");
@@ -309,7 +316,7 @@ int do_persistence(struct block_device *temp_bdev){
             successor = get_pointer(block_metadata[i].val_next);
 
             // if successor was NULL the get_pointer operation set the leftmost bit to 1
-            if(successor == change_validity(NULL)) next = NULL;
+            if(successor == change_validity(NULL)) next = 0;
             else next = successor->num + 2;
             printk("%s:     next = %d\n", MODNAME, next);
             printk("%s:     validity = %d\n", MODNAME, valid);

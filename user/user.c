@@ -12,7 +12,6 @@
 #define GET	   	   174
 
 
-
 char* contenuti[] = {"ciao sono lucia e sono una sirena", "può sembrare strano ma è una storia vera", "la leggenda su di noi è già la verità ...", 
 "dragon ball gt, siamo tutti qui", "non c'è un drago più super di così", "dragon ball perchè, ogni sfera è ...", "l'energia che risplende in te!"};
 
@@ -21,15 +20,25 @@ int main(int argc, char** argv){
  	
     long int arg;	
 	char operation;
-	int ret;
+	int ret, ret_sys;
 	size_t size = 10;
 	char* lettura = malloc(size);
+	char mount_command[1024];
 	
 	if(argc < 3){
 		goto error_params;
 	}
-	
-	
+
+	//mount -o loop -t singlefilefs image ./mount/
+	// sprintf(mount_command,"mount -o loop -t singlefilefs %s ./", PATH_TO_IMAGE);
+	// ret_sys = system(mount_command);
+	// printf("ho chiamato la mount e mi ha ritornato %d (%s)\n", ret_sys, strerror(errno));
+
+
+
+
+
+
 	operation = argv[1][0];
 
 	char *path0 = "/dev/umessage";
@@ -64,7 +73,7 @@ int main(int argc, char** argv){
 			char destination[] = "";
 			printf("voglio mettere in destination (%p) i dati letti\n", destination);
 			ret = syscall(GET, arg, destination, size);
-			printf("ho letto %ld byte dal blocco %ld: '%s'\n", ret, arg, destination);
+			printf("ho letto %d byte dal blocco %ld: '%s'\n", ret, arg, destination);
 			break;
 		
 		case 'O':

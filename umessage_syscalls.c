@@ -73,10 +73,8 @@ asmlinkage int sys_put_data(char* source, size_t size){
 	char* message;
 
     if(size > DATA_SIZE) return -EINVAL;
-	// if(size > DEFAULT_BLOCK_SIZE) return -EINVAL;
 	
     // dynamic allocation of area to contain the message
-    // message = kmalloc(size+1, GFP_KERNEL);
 	message = kzalloc(DATA_SIZE, GFP_KERNEL);
     if (!message){
     	printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);

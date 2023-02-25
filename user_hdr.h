@@ -9,11 +9,12 @@
 #define DATA_SIZE DEFAULT_BLOCK_SIZE - METADATA_SIZE
 #define change_validity(ptr)    (void*)((unsigned long) ptr^MASK)
 #define MASK 0x8000000000000000
+#define PATH_TO_IMAGE "/home/elisa/Scrivania/umessage/image"
 
 
 // integer define
 #define VALID_MASK 0x80000000
-#define INVALID_MASK (~VALID_MASK)  //0x7FFFFFFF
+#define INVALID_MASK (~VALID_MASK)
 #define set_valid(i)          ((unsigned int) (i) | VALID_MASK)
 #define set_invalid(i)        ((unsigned int) (i) & INVALID_MASK)
 #define get_validity_int(i)   ((unsigned int) (i) >> (sizeof(unsigned int) * 8 - 1))

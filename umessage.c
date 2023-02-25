@@ -33,24 +33,23 @@ MODULE_DESCRIPTION("user message block level mantainance");
 
 
 
-// DEFINIZIONE DEL PARAMETRO DEL MODULO: l'indirizzo della system call table
+// MODULE PARAMETER: system call table's address
 
 unsigned long the_syscall_table = 0x0;
 module_param(the_syscall_table, ulong, 0660);
 
 
 
-// STRUTTURA DATI MANTENENTE I METADATI DEI BLOCCHI
+// DATA STRUCTURE TO KEEP BLOCKS METADATA
 
 struct block_node block_metadata[MAXBLOCKS];
 struct block_node* valid_messages;
-dev_t dev;
-unsigned long pending[2];
-unsigned long epoch;
-int next_epoch_index;
+struct counter rcu __attribute__((aligned(64)));
+
+int Major;
 
 
-// FUNZIONI DI STARTUP E SHUTDOWN DEL MODULO
+// STARTUP AND SHUTDOWN FUNCTIONS
 
 int init_module(void) {
 
@@ -66,7 +65,7 @@ int init_module(void) {
 	}
 
 
-        // inizializzazione delle system call nella tabella
+        // system call initialization
 
 	new_sys_call_array[0] = (unsigned long)sys_invalidate_data;
 	new_sys_call_array[1] = (unsigned long)sys_put_data;
@@ -88,7 +87,7 @@ int init_module(void) {
 
 
 
-        // inizializzazione del device driver
+        // idevice driver initialization
 
         Major = __register_chrdev(0, 0, 256, DEVICE_NAME, &fops);
 	if (Major < 0) {
@@ -98,9 +97,8 @@ int init_module(void) {
 
 	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
-        dev = MKDEV(Major, 0);
         
-        // registrazione del filesystem
+        // filesystem registration
 
         ret2 = register_filesystem(&onefilefs_type);
         if (likely(ret2 == 0))
@@ -110,39 +108,25 @@ int init_module(void) {
 
 
         
-        // inizializzazione dell'array
+        // metadata array initialization
 
         for(k=0; k<MAXBLOCKS; k++){
                               
                 
-                block_metadata[k].val_next = NULL;                  // il null è invalido (ha come bit più a sx uno 0)
+                block_metadata[k].val_next = NULL;                  // null is invalid (leftmost bit set to 0)
                 block_metadata[k].num = k;
                 mutex_init(&block_metadata[k].lock);
                 
-                // if(k==0){
-                //         printk("puntatore è:                     %px\n", &block_metadata[k]);
-                //         printk("puntatore con bit invalidato è:  %px\n", change_validity(&block_metadata[k]));
-                //         printk("puntatore con bit val dopo inv:  %px\n", change_validity(change_validity(&block_metadata[k])));
-                //         printk("puntatore ricavato da ptr puro:  %px\n", get_pointer(&block_metadata[k]));
-                //         printk("puntatore ricavato da ptr val:   %px\n", get_pointer(change_validity(change_validity(&block_metadata[k]))));
-                //         printk("puntatore ricavato da ptr inval: %px\n", get_pointer(change_validity(&block_metadata[k])));
-                //         printk("validità ptr:                    %lu\n", get_validity(&block_metadata[k]));
-                //         printk("validità ptr invalido:           %lu\n", get_validity(change_validity(&block_metadata[k])));
-                //         printk("validità ptr valido:             %lu\n", get_validity(change_validity(change_validity(&block_metadata[k]))));
-                //         printk("validità ptr null:               %lu\n", get_validity(NULL));
-                        
-                // }
-                // printk("ctr blocco %d inizializzato a %lu\n", k, *(block_metadata[k].ctr));
         }
 
         // counter init
-        epoch = 0x0;
-	pending[0] = 0x0;
-        pending[1] = 0x0;
-	next_epoch_index = 0x1;	
+        rcu.epoch = 0x0;
+	rcu.pending[0] = 0x0;
+        rcu.pending[1] = 0x0;
+	rcu.next_epoch_index = 0x1;	
 
 
-        // creo una head permanente a cui agganciare elementi
+        // creation of a permanent head to hook elements
         head = (struct block_node *) kmalloc(sizeof(struct block_node), GFP_KERNEL);
         if(head == NULL){
                 printk("%s: kmalloc error, can't allocate memory needed to manage permanent head\n",MODNAME);
@@ -152,10 +136,6 @@ int init_module(void) {
         head->val_next = change_validity(NULL);
         head->num = -1;
         mutex_init(&head->lock);
-        printk("chg validity NULL                       = %px\n", change_validity(NULL));
-        printk("get_pointer(NULL)                       = %px\n", get_pointer(NULL));
-        printk("chg validity (chg validity NULL)        = %px\n", change_validity(change_validity(NULL)));
-        printk("get_pointer  (chg validity NULL)        = %px\n", get_pointer(change_validity(NULL)));
         valid_messages = head;
         return 0;
 
@@ -168,7 +148,7 @@ void cleanup_module(void) {
                 
         printk("%s: shutting down\n",MODNAME);
 
-        // restore della system call table
+        // system call table restore
 
 	unprotect_memory();
         for(i=0;i<HACKED_ENTRIES;i++){
@@ -178,7 +158,7 @@ void cleanup_module(void) {
         printk(KERN_INFO "%s: sys-call table restored to its original content\n",MODNAME);
 
         
-        // eliminazione del device driver
+        // device driver deletion
         
         unregister_chrdev(Major, DEVICE_NAME);
         
@@ -186,7 +166,7 @@ void cleanup_module(void) {
         
         
 
-        // eliminazione del filesystem
+        // filesystem deletion
         ret = unregister_filesystem(&onefilefs_type);
 
         if (likely(ret == 0))

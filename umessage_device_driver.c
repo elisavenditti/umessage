@@ -10,15 +10,12 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/ioctl.h>
-#include <linux/delay.h>            // test inclusion
+#include <linux/delay.h>            // inclusion for testing
 
-// DEFINIZIONI E DICHIARAZIONI
 
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
-
-int Major;
 DECLARE_WAIT_QUEUE_HEAD(wqueue);
 
 
@@ -39,13 +36,13 @@ int dev_put_data(char* source, size_t size){
    
    printk("PUT DATA\n");
 
-   __sync_fetch_and_add(&bdev_usage,1);            // signal the presence of reader on bdev variable
-   temp = bdev;
-   printk("bdev_usage = %lu\n", bdev_usage);
+   __sync_fetch_and_add(&(bdev_md.bdev_usage),1);            // signal the presence of reader on bdev variable
+   temp = bdev_md.bdev;
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
    if(temp == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
-      __sync_fetch_and_sub(&bdev_usage,1);
-      printk("bdev_usage = %lu\n", bdev_usage);
+      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
+      printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
       wake_up_interruptible(&umount_queue);
       return -ENODEV;
    }
@@ -63,7 +60,7 @@ int dev_put_data(char* source, size_t size){
    
    if (selected_block == NULL){
       printk("%s: no space available to insert a message\n", MODNAME);
-      __sync_fetch_and_sub(&bdev_usage,1);
+      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
       wake_up_interruptible(&umount_queue);
       return -ENOMEM;
    }
@@ -80,7 +77,7 @@ int dev_put_data(char* source, size_t size){
       if(tail->val_next == NULL){
          
          printk("%s: not able to find the tail due to concurrency, retry\n", MODNAME);
-         __sync_fetch_and_sub(&bdev_usage,1);
+         __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
          wake_up_interruptible(&umount_queue);
          return -EAGAIN;
       }
@@ -142,11 +139,7 @@ int dev_put_data(char* source, size_t size){
 
    
    // the update is not atomic: the lock protect concurrent updates
-   // strncpy(((struct bdev_node *)bh->b_data)->data, source, DATA_SIZE);  
    strncpy(bh->b_data, source, DATA_SIZE);  
-   // strncpy(data_offset(bh->b_data), source, DATA_SIZE);  
-   // strncpy(bh->b_data, source, DEFAULT_BLOCK_SIZE);//size);
-
    mark_buffer_dirty(bh);
 
 #ifdef FORCE_SYNC
@@ -159,18 +152,18 @@ int dev_put_data(char* source, size_t size){
 
    brelse(bh);
 
-   //STAMPA PROVA
+   // STAMPA PROVA
    for(i=0; i<NBLOCKS; i++){
       printk("%d) val_next=%px", i, block_metadata[i].val_next);
    }
-   //FINE STAMPA
+   // FINE STAMPA
 
    ret = selected_block->num;
 
 put_exit:   
    mutex_unlock(&(selected_block->lock));  
-   __sync_fetch_and_sub(&bdev_usage,1);
-   printk("bdev_usage = %lu\n", bdev_usage);
+   __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
    wake_up_interruptible(&umount_queue);
 
 
@@ -197,13 +190,13 @@ int dev_get_data(int offset, char * destination, size_t size){
 	
 
    printk("GET DATA\n");
-   __sync_fetch_and_add(&bdev_usage,1);            // signal the presence of reader on bdev variable
-   temp = bdev;
-   printk("bdev_usage = %lu\n", bdev_usage);
+   __sync_fetch_and_add(&(bdev_md.bdev_usage),1);            // signal the presence of reader on bdev variable
+   temp = bdev_md.bdev;
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
    if(temp == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
-      __sync_fetch_and_sub(&bdev_usage,1);    
-      printk("bdev_usage = %lu\n", bdev_usage);
+      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);    
+      printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
       wake_up_interruptible(&umount_queue);
       return -ENODEV;
    }
@@ -214,13 +207,13 @@ int dev_get_data(int offset, char * destination, size_t size){
 
    if(get_validity(selected_block->val_next) == 0){
       printk(KERN_INFO "%s: the block requested is not valid", MODNAME);
-      __sync_fetch_and_sub(&bdev_usage,1);
+      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
       wake_up_interruptible(&umount_queue);
       return -ENODATA;
    }
 
    // signal the presence of reader - avoid that a writer reuses this block while i'm reading
-	my_epoch = __sync_fetch_and_add(&epoch,1);
+	my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
 
 
    // get cached data
@@ -231,7 +224,7 @@ int dev_get_data(int offset, char * destination, size_t size){
       goto get_exit;
    }
    
-   printk("bh->size = %d - size requested = %d\n", bh->b_size, size);
+   printk("bh->size = %lu - size requested = %lu\n", bh->b_size, size);
    
    if (bh->b_data != NULL){
       AUDIT printk(KERN_INFO "%s: [blocco %d] ho letto -> %s\n", MODNAME, block_to_read, bh->b_data);  
@@ -248,9 +241,9 @@ get_exit:
 
    // the first bit in my_epoch is the index where we must release the counter
    index = (my_epoch & MASK) ? 1 : 0;           
-	__sync_fetch_and_add(&pending[index],1);
-   __sync_fetch_and_sub(&bdev_usage,1);
-   printk("bdev_usage = %lu\n", bdev_usage);
+	__sync_fetch_and_add(&(rcu.pending[index]),1);
+   __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
    wake_up_interruptible(&wqueue);
    wake_up_interruptible(&umount_queue);
    return return_val;
@@ -271,12 +264,19 @@ int dev_invalidate_data(int offset){
 	unsigned long last_epoch;
 	unsigned long updated_epoch;
 	unsigned long grace_period_threads;
+   struct block_device *temp; 
 	int index;
 
    printk("INVALIDATE DATA\n");
-   // not reserving the bdev_usage counter because it is not used
-   if(bdev == NULL){
+   
+   __sync_fetch_and_add(&(bdev_md.bdev_usage),1);
+   temp = bdev_md.bdev;
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
+   if(temp == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
+      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);    
+      printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
+      wake_up_interruptible(&umount_queue);
       return -ENODEV;
    }
 
@@ -338,11 +338,11 @@ int dev_invalidate_data(int offset){
       
       
    // move to a new epoch
-   updated_epoch = (next_epoch_index) ? MASK : 0;
-   next_epoch_index += 1;
-	next_epoch_index %= 2;	
+   updated_epoch = (rcu.next_epoch_index) ? MASK : 0;
+   rcu.next_epoch_index += 1;
+	rcu.next_epoch_index %= 2;	
 
-	last_epoch = __atomic_exchange_n (&(epoch), updated_epoch, __ATOMIC_SEQ_CST);
+	last_epoch = __atomic_exchange_n (&(rcu.epoch), updated_epoch, __ATOMIC_SEQ_CST);
 	index = (last_epoch & MASK) ? 1 : 0; 
 	grace_period_threads = last_epoch & (~MASK); 
 
@@ -351,14 +351,16 @@ int dev_invalidate_data(int offset){
 	
 	
    
-   wait_event_interruptible(wqueue, pending[index] >= grace_period_threads);
-   // while(pending[index] < grace_period_threads){ msleep(1);}
-   pending[index] = 0;
+   wait_event_interruptible(wqueue, rcu.pending[index] >= grace_period_threads);
+   rcu.pending[index] = 0;
    printk("%s: INVALIDATION DONE\n", MODNAME);
 
 
 inv_end: 
-   mutex_unlock(&(selected->lock));  
+   mutex_unlock(&(selected->lock)); 
+   __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
+   wake_up_interruptible(&umount_queue); 
    return ret;
 }
 
@@ -389,12 +391,12 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    if(*off != 0) return 0;
    copied = 0;
 
-   __sync_fetch_and_add(&bdev_usage,1);
-   temp_bdev = bdev;
-   printk("bdev_usage = %lu\n", bdev_usage);
+   __sync_fetch_and_add(&(bdev_md.bdev_usage),1);
+   temp_bdev = bdev_md.bdev;
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
    if(temp_bdev == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
-      __sync_fetch_and_sub(&bdev_usage,1);
+      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
       wake_up_interruptible(&umount_queue);
       return -ENODEV;
    }
@@ -406,9 +408,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
 
 
    // signal the presence of reader 
-   printk("old ctr: %ld\n", (epoch) & (~MASK));
-   my_epoch = __sync_fetch_and_add(&epoch,1);
-   printk("new ctr: %ld\n", (epoch) & (~MASK));
+   printk("old ctr: %ld\n", (rcu.epoch) & (~MASK));
+   my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
+   printk("new ctr: %ld\n", (rcu.epoch) & (~MASK));
 
    // check if the valid list is empty
    if(get_pointer(valid_messages->val_next) == change_validity(NULL)){
@@ -445,7 +447,6 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          data = ((struct bdev_node*) (bh->b_data))->data;
          lenght = strlen/*(data);//*/(bh->b_data);
          AUDIT printk(KERN_INFO " data: %s of len: %d\n", bh->b_data, lenght);
-         // AUDIT printk(KERN_INFO " data: %s of len: %d\n", ((struct bdev_node*) bh->b_data)->data, lenght);
 
          // allocate and use the temp buffer in order to modify 
          // the retrieved message with the termination character
@@ -458,7 +459,6 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          }
 
          strncpy(temp_buf, bh->b_data, lenght);
-         // strncpy(temp_buf, data, lenght);
          temp_buf[lenght] = '\n';
       
          ret = copy_to_user(buff + copied, temp_buf, lenght+1);
@@ -484,12 +484,12 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
 
 read_end:   
    index = (my_epoch & MASK) ? 1 : 0;           
-	printk("reset ctr index %d (before): %ld\n", index, pending[index]);
-   __sync_fetch_and_add(&pending[index],1);
-   printk("reset ctr index %d (after): %ld\n", index, pending[index]);
+	printk("reset ctr index %d (before): %ld\n", index, rcu.pending[index]);
+   __sync_fetch_and_add(&(rcu.pending[index]),1);
+   printk("reset ctr index %d (after): %ld\n", index, rcu.pending[index]);
    wake_up_interruptible(&wqueue);
-   __sync_fetch_and_sub(&bdev_usage,1);
-   printk("bdev_usage = %lu\n", bdev_usage);
+   __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
+   printk("bdev_usage = %lu\n", bdev_md.bdev_usage);
    wake_up_interruptible(&umount_queue);
 
    kfree(temp_buf);
@@ -505,8 +505,8 @@ static int dev_open(struct inode *inode, struct file *file) {
 
    printk(KERN_INFO "%s: thread %d trying to open file\n",MODNAME,current->pid);
    
-   // not reserving the bdev_usage counter because it is not used
-   if(bdev == NULL){
+   // not reserving the bdev_usage counter 
+   if(bdev_md.bdev == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
       return -ENODEV;
    }   
@@ -528,8 +528,8 @@ static int dev_release(struct inode *inode, struct file *file) {
 
    printk(KERN_INFO "%s: thread %d trying to close device file\n",MODNAME,current->pid);
    
-   // not reserving the bdev_usage counter because it is not used
-   if(bdev == NULL){
+   // not reserving the bdev_usage counter
+   if(bdev_md.bdev == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
       return -ENODEV;
    }

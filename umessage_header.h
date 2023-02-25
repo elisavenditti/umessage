@@ -15,6 +15,7 @@
 #define DATA_SIZE (DEFAULT_BLOCK_SIZE - METADATA_SIZE)
 #define NBLOCKS 4
 #define MAXBLOCKS 5
+#define PATH_TO_IMAGE "/home/elisa/Scrivania/umessage/image"
 
 // MAJOR&MINOR UTILS
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
@@ -40,20 +41,43 @@ struct bdev_node {
 };
 
 
+// the access to these two variables is performed by the mount thread, readers and writers
+// the field are always used together
+struct bdev_metadata{
+    unsigned long bdev_usage;                               // operations that should complete before deallocation of bdev
+    struct block_device *bdev;                              // block device to get data(initialized when the FS is mounted)s
+};
+
+
+// the access to these two variable is performed only by the mount thread
+// the field are always used together
+struct mount_metadata{
+    int mounted;
+    char block_device_name[20];
+};
+
+// RCU UTILS - the field are used together 
+struct counter{
+        unsigned long pending[2];                           // reader that released the counter in the current epoch
+        unsigned long epoch;                                // current epoch readers (leftmost bit indicate the current epoch)
+        int next_epoch_index;                               // index to access pending[] in the next epoch
+};
+
+
+
 // KERNEL DATA STRUCTURES
 extern const struct file_operations fops;                   // device driver exposed file operations
 extern struct block_node* valid_messages;                   // head of the valid blocks
 extern struct block_node block_metadata[MAXBLOCKS];         // all blocks of the device
-
-extern int Major;
-
-extern unsigned long epoch;                                 // current epoch readers (leftmost bit indicate the current epoch)
-extern int next_epoch_index;                                // index to access pending[] in the next epoch
-extern unsigned long pending[2];                            // reader that released the counter in the current epoch
-
-extern struct block_device *bdev;                           // block device to get data(initialized when the FS is mounted)s
-extern unsigned long bdev_usage;                            // operations that should complete before deallocation of bdev
 extern wait_queue_head_t umount_queue;                      // wait queue to stop until the bdev can be deallocated
+extern struct counter rcu;
+extern struct bdev_metadata bdev_md;
+
+// extern unsigned long epoch;                                 // current epoch readers (leftmost bit indicate the current epoch)
+// extern int next_epoch_index;                                // index to access pending[] in the next epoch
+// extern unsigned long pending[2];                            // reader that released the counter in the current epoch
+// extern struct block_device *bdev;                           // block device to get data(initialized when the FS is mounted)s
+// extern unsigned long bdev_usage;                            // operations that should complete before deallocation of bdev
 
 
 // VFS NON-SUPPORTED FEATURES OF DEVICE DRIVER 

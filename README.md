@@ -12,6 +12,7 @@ CONFIGURAZIONE
                         definire SYNC se si vuole che la scrittura sul device sia sincrona
 * se si vuole rendere persistente il contenuto dei blocchi bisogna eliminare i primi due comandi nel make file (create-fs). Questi due comandi
   vanno eseguiti solo durante la prima creazione
+* in user_hdr.h e in umessage_header.h definire PATH_TO_IMAGE con il path per il file immagine
 
 Modulo sviluppato
 
