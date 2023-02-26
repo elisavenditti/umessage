@@ -63,7 +63,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     if (!root_inode){
         return -ENOMEM;
     }
-
+    
     root_inode->i_ino = SINGLEFILEFS_ROOT_INODE_NUMBER; // this is actually 10
     inode_init_owner(&init_user_ns, root_inode, NULL, S_IFDIR);// set the root user as owned of the FS root
     root_inode->i_sb = sb;
@@ -108,7 +108,7 @@ static void singlefilefs_kill_superblock(struct super_block *s) {
     kill_block_super(s);
     md.mounted = 0;
 
-    printk(KERN_INFO "%s: singlefilefs unmount succesful.\n",MODNAME);
+    printk("%s: singlefilefs unmount succesful.\n",MODNAME);
     return;
 }
 
@@ -136,7 +136,7 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     }
 
     // SUCCESS - old value returned
-    printk("%s: mounted set to %d\n", MODNAME, md.mounted);
+    AUDIT printk("%s: mounted set to %d\n", MODNAME, md.mounted);
     
 
 
@@ -199,16 +199,19 @@ int dimension_check(void){
         return 1;
     }
 
+    // get the file total dimension
     size = vfs_llseek(filp, 0, SEEK_END);
     if (size < 0) {
         printk("%s: Error getting image file size\n", MODNAME);
         filp_close(filp, NULL);
         return 1;
     }
-    num_blocks = (size / DEFAULT_BLOCK_SIZE) -2;        //exclude metadata blocks
-    printk("%s: num_blocks = %llu, supported blocks = %d\n", MODNAME, num_blocks, MAXBLOCKS);
+
+    // numbero of blocks in the image file (excluded metadata blocks)
+    num_blocks = (size / DEFAULT_BLOCK_SIZE) -2;        
+    AUDIT printk("%s: num_blocks = %llu, supported blocks = %d\n", MODNAME, num_blocks, MAXBLOCKS);
     
-    if(num_blocks>MAXBLOCKS) return 1;
+    if(num_blocks > MAXBLOCKS) return 1;
     return 0;
 
 }
@@ -238,7 +241,7 @@ int do_init(void){
             return -EIO;
         }
         if (bh->b_data != NULL){
-            AUDIT printk("%s: [blocco %d]\n", MODNAME, block_to_read);   
+            AUDIT printk("%s: [block %d]\n", MODNAME, block_to_read);   
 
             bnode = (struct bdev_node*) bh->b_data;
             next = set_invalid(bnode->val_next);
@@ -265,9 +268,6 @@ int do_init(void){
             
             
             block_metadata[i].val_next = successor;
-
-            printk("%s:     block_metadata[i].val_next = %px\n", MODNAME, block_metadata[i].val_next);
-            printk("%s:     &block_metadata[next] = %px\n", MODNAME, successor);
             brelse(bh);            
         }
 
@@ -310,7 +310,7 @@ int do_persistence(struct block_device *temp_bdev){
         }
 
         if (bh->b_data != NULL){
-            printk("%s:[blocco %d]\n", MODNAME, block_to_write);   
+            AUDIT printk("%s: [block %d]\n", MODNAME, block_to_write);   
 
             valid = get_validity(block_metadata[i].val_next);
             successor = get_pointer(block_metadata[i].val_next);
@@ -318,8 +318,11 @@ int do_persistence(struct block_device *temp_bdev){
             // if successor was NULL the get_pointer operation set the leftmost bit to 1
             if(successor == change_validity(NULL)) next = 0;
             else next = successor->num + 2;
-            printk("%s:     next = %d\n", MODNAME, next);
-            printk("%s:     validity = %d\n", MODNAME, valid);
+            
+            AUDIT{
+                printk("%s:     next = %d\n", MODNAME, next);
+                printk("%s:     validity = %d\n", MODNAME, valid);
+            }
 
             
             if(valid)   next = set_valid(next);
@@ -327,10 +330,10 @@ int do_persistence(struct block_device *temp_bdev){
 
             // write into cache and flush data to device
             memcpy(&(((struct bdev_node *)bh->b_data)->val_next), &next, sizeof(unsigned int));            
-            // memcpy(bh->b_data, &next, sizeof(unsigned int));
             mark_buffer_dirty(bh);
-            if(sync_dirty_buffer(bh) == 0) printk("SUCCESS IN SYNCHRONOUS WRITE");
-            else printk("FAILURE IN SYNCHRONOUS WRITE");
+            if(sync_dirty_buffer(bh) == 0){
+                AUDIT printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
+            } else printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
             
             
             brelse(bh);

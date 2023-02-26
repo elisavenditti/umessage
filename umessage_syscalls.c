@@ -46,8 +46,8 @@ asmlinkage int sys_invalidate_data(int offset){
 	if (offset>NBLOCKS || offset<0) return -EINVAL;
 	
 	AUDIT {
-		printk("%s: invocation of sys_invalidate_data\n",MODNAME);
-		printk("block to invalidate is: %d\n", offset);
+		printk(KERN_INFO "%s: invocation of sys_invalidate_data\n",MODNAME);
+		printk(KERN_INFO "%s: block to invalidate is: %d\n", MODNAME, offset);
 	}
 
 
@@ -87,14 +87,17 @@ asmlinkage int sys_put_data(char* source, size_t size){
 	if(len<size) size = len;
     message[size] = '\0';
 
-    printk("message: %s, len: %lu\n", message, size+1);
-
+    AUDIT{
+		printk(KERN_INFO "%s: invocation of sys_put_data\n", MODNAME);
+		printk(KERN_INFO "%s: message to put is %s (len - %lu)\n", MODNAME, message, size+1);
+	}
 
 	// call the specific function in device driver
 	do {
 		ret = dev_put_data(message, size + 1);				// the insertion must include '/0'	
 	} while (ret == -EAGAIN);
 	
+	kfree(message);
 	return ret;
 }
 
@@ -113,8 +116,8 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
 	else if(size < 0 || offset>NBLOCKS || offset<0) return -EINVAL;
 
 	AUDIT{
-		printk("%s: invocation of sys_get_data\n",MODNAME);
-		printk("destination: %px, len: %lu, block: %d\n", destination, size, offset);
+		printk(KERN_INFO "%s: invocation of sys_get_data\n",MODNAME);
+		printk(KERN_INFO "%s: the destination buffer is at %px; getting %lu bytes of block %d\n", MODNAME, destination, size, offset);
 	}
 	
 	// call the specific function in device driver

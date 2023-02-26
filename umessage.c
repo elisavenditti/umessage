@@ -59,10 +59,10 @@ int init_module(void) {
         int ret2;
         struct block_node *head;
         
-	AUDIT{
-	   printk(KERN_INFO "%s: received sys_call_table address %px\n",MODNAME,(void*)the_syscall_table);
-     	   printk(KERN_INFO "%s: initializing - hacked entries %d\n",MODNAME,HACKED_ENTRIES);
-	}
+	
+	printk("%s: received sys_call_table address %px\n", MODNAME, (void*)the_syscall_table);
+     	printk("%s: initializing - hacked entries %d\n", MODNAME, HACKED_ENTRIES);
+	
 
 
         // system call initialization
@@ -71,9 +71,9 @@ int init_module(void) {
 	new_sys_call_array[1] = (unsigned long)sys_put_data;
 	new_sys_call_array[2] = (unsigned long)sys_get_data;
 
-        ret = get_entries(restore,HACKED_ENTRIES,(unsigned long*)the_syscall_table,&the_ni_syscall);
+        ret = get_entries(restore, HACKED_ENTRIES, (unsigned long*)the_syscall_table, &the_ni_syscall);
         if (ret != HACKED_ENTRIES){
-                printk(KERN_INFO "%s: could not hack %d entries (just %d)\n",MODNAME,HACKED_ENTRIES,ret); 
+                printk("%s: could not hack %d entries (just %d)\n", MODNAME, HACKED_ENTRIES, ret); 
                 return -1;      
         }
 
@@ -83,7 +83,7 @@ int init_module(void) {
         }
 	protect_memory();
 
-        printk(KERN_INFO "%s: all new system-calls correctly installed on sys-call table\n",MODNAME);
+        printk("%s: all new system-calls correctly installed on sys-call table\n", MODNAME);
 
 
 
@@ -95,28 +95,24 @@ int init_module(void) {
 	        return Major;
 	}
 
-	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
+	printk("%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
         
         // filesystem registration
 
         ret2 = register_filesystem(&onefilefs_type);
         if (likely(ret2 == 0))
-                printk(KERN_INFO "%s: sucessfully registered umessagefs\n",MODNAME);
+                printk("%s: sucessfully registered umessagefs\n",MODNAME);
         else
-                printk(KERN_INFO "%s: failed to register umessagefs - error %d", MODNAME,ret2);
+                printk("%s: failed to register umessagefs - error %d", MODNAME,ret2);
 
 
         
         // metadata array initialization
-
         for(k=0; k<MAXBLOCKS; k++){
-                              
-                
                 block_metadata[k].val_next = NULL;                  // null is invalid (leftmost bit set to 0)
                 block_metadata[k].num = k;
                 mutex_init(&block_metadata[k].lock);
-                
         }
 
         // counter init
@@ -155,14 +151,14 @@ void cleanup_module(void) {
                 ((unsigned long *)the_syscall_table)[restore[i]] = the_ni_syscall;
         }
 	protect_memory();
-        printk(KERN_INFO "%s: sys-call table restored to its original content\n",MODNAME);
+        printk("%s: sys-call table restored to its original content\n",MODNAME);
 
         
         // device driver deletion
         
         unregister_chrdev(Major, DEVICE_NAME);
         
-        printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
+        printk("%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
         
         
 
@@ -170,14 +166,13 @@ void cleanup_module(void) {
         ret = unregister_filesystem(&onefilefs_type);
 
         if (likely(ret == 0))
-                printk(KERN_INFO "%s: sucessfully unregistered file system driver\n",MODNAME);
+                printk("%s: sucessfully unregistered file system driver\n",MODNAME);
         else
-                printk(KERN_INFO "%s: failed to unregister umessagefs driver - error %d", MODNAME, ret);
+                printk("%s: failed to unregister umessagefs driver - error %d", MODNAME, ret);
 
         
-        
-        // TODO DEALLOCARE MEMORIA PER LA LISTA ... E PER L'ARRAY ...
-
+        // deallocation of the permanent head
+        kfree(valid_messages);
 	return;
         
 }

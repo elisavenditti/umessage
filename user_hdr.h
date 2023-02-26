@@ -1,5 +1,6 @@
 #ifndef _UMESSAGE_H
 #define _UMESSAGE_H
+#include <math.h>
 
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)
@@ -10,6 +11,9 @@
 #define change_validity(ptr)    (void*)((unsigned long) ptr^MASK)
 #define MASK 0x8000000000000000
 #define PATH_TO_IMAGE "/home/elisa/Scrivania/umessage/image"
+#define NBLOCKS 4
+
+#define NUM_DIGITS(n) ((int)log10(n) + 1)
 
 
 // integer define
@@ -27,6 +31,29 @@ char* testo[] = {
 "Dall’Alpi alle Piramidi, Dal Manzanarre al Reno, Di quel securo il fulmine Tenea dietro al baleno; Scoppiò da Scilla al Tanai, Dall’uno all’altro mar.",
 "ciao sono lucia e sono una sirena", "può sembrare strano ma è una storia vera", "la leggenda su di noi è già la verità ...", 
 "dragon ball gt, siamo tutti qui", "non c'è un drago più super di così", "dragon ball perchè, ogni sfera è ...", "l'energia che risplende in te!" };
+
+
+char homepage[] = {"\033[2J\033[H  \
+		\n\n\n*********************************************************************************** \
+		\n\tUSER-MESSAGE SERVICE | HOW CAN I HELP YOU?\n\n\
+		\t1) PUT DATA 		   - Write message in a free block\n\
+		\t2) GET DATA 		   - Retrieve message in a block\n\
+		\t3) INVALIDATE DATA   - Cancel the content of a block\n\
+		\t4) MOUNT FILESYSTEM  - In the current directory\n\
+		\t5) UMOUNT FILESYSTEM - \n\
+		\t6) Exit\n\
+		\n***********************************************************************************\n"};
+
+/*// printf("\033[2J\033[H");
+		// printf("\n\n\n***********************************************************************************");
+		// printf("\n\tUSER-MESSAGE SERVICE | HOW CAN I HELP YOU?\n\n");
+		// printf("\t1) PUT DATA 		   - Write message in a free block\n");
+		// printf("\t2) GET DATA 		   - Retrieve message in a block\n");
+		// printf("\t3) INVALIDATE DATA   - Cancel the content of a block\n");
+		// printf("\t4) MOUNT FILESYSTEM  - In the current directory\n");
+		// printf("\t5) UMOUNT FILESYSTEM - \n");
+		// printf("\t6) Exit\n");
+		// printf("\n***********************************************************************************\n");*/
 
 
 #endif
