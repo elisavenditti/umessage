@@ -184,6 +184,7 @@ int dev_get_data(int offset, char * destination, size_t size){
 	int index;
    int return_val;
    int block_to_read;
+   char end = '\0';
    unsigned long my_epoch;
    struct buffer_head *bh = NULL;
    struct block_node* selected_block;  
@@ -229,6 +230,7 @@ int dev_get_data(int offset, char * destination, size_t size){
       AUDIT printk(KERN_INFO "%s: [block %d] - %s\n", MODNAME, block_to_read, bh->b_data);  
       ret = copy_to_user(destination, bh->b_data, size);
       return_val = size - ret;
+      ret = copy_to_user(destination+return_val, &end, 1);
       if(strlen(bh->b_data)<size) return_val = strlen(bh->b_data);
    }
 

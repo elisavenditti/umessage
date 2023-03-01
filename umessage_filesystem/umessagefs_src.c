@@ -122,8 +122,8 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     // check if the driver can manage the messages
     if(dimension_check()){
         printk("%s: error - the device driver can support up to %d blocks\n", MODNAME, MAXBLOCKS);
-        // return -EINVAL;
-        return NULL;
+        return ERR_PTR(-EINVAL);
+        // return NULL;
     }
 
     // check if the FS is already mounted - with compare and swap there's not the issue of concurrent checks    
@@ -131,8 +131,8 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     if(old_mount == 1){
         // FAILURE - new value returned
         printk("%s: error - the device driver can support single mount at time (mounted=%d)\n", MODNAME, md.mounted);
-        // return -EBUSY;
-        return NULL;
+        return ERR_PTR(-EBUSY);
+        // return NULL;
     }
 
     // SUCCESS - old value returned
@@ -160,8 +160,8 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
 
         if(bdev_md.bdev == NULL){
             printk("%s: can't get the struct block_device associated to %s", MODNAME, md.block_device_name);
-            // return -EINVAL;
-            return NULL;
+            return ERR_PTR(-EINVAL);
+            // return NULL;
         }
 
         // retrieve the state of blocks from device

@@ -98,6 +98,7 @@ asmlinkage int sys_put_data(char* source, size_t size){
 	} while (ret == -EAGAIN);
 	
 	kfree(message);
+	printk("ret=%d\n", ret);
 	return ret;
 }
 

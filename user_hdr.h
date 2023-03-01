@@ -36,11 +36,11 @@ char* testo[] = {
 char homepage[] = {"\033[2J\033[H  \
 		\n\n\n*********************************************************************************** \
 		\n\tUSER-MESSAGE SERVICE | HOW CAN I HELP YOU?\n\n\
-		\t1) PUT DATA 		   - Write message in a free block\n\
-		\t2) GET DATA 		   - Retrieve message in a block\n\
-		\t3) INVALIDATE DATA   - Cancel the content of a block\n\
-		\t4) MOUNT FILESYSTEM  - In the current directory\n\
-		\t5) UMOUNT FILESYSTEM - \n\
+		\t1) PUT DATA 		- Write message in a free block\n\
+		\t2) GET DATA		- Retrieve message in a block\n\
+		\t3) INVALIDATE DATA	- Cancel the content of a block\n\
+		\t4) MOUNT FILESYSTEM  	- In the current directory\n\
+		\t5) UMOUNT FILESYSTEM\n\
 		\t6) Exit\n\
 		\n***********************************************************************************\n"};
 
