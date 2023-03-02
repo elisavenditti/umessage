@@ -19,8 +19,9 @@ static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
 DECLARE_WAIT_QUEUE_HEAD(wqueue);
 
 
-// PUT DATA
 
+
+// ADDED
 int dev_put_data(char* source, size_t size){
    
    int i;
@@ -62,59 +63,67 @@ int dev_put_data(char* source, size_t size){
    
    if (selected_block == NULL){
       printk("%s: no space available to insert a message\n", MODNAME);
-      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
-      wake_up_interruptible(&umount_queue);
-      return -ENOMEM;
+      ret = -ENOMEM;
+      goto put_exit;
    }
-   AUDIT printk(KERN_INFO "%s: the valid block is the number %d\n", MODNAME, selected_block->num);
+   AUDIT printk(KERN_INFO "%s: the invalid block is the number %d\n", MODNAME, selected_block->num);
 
 
-
-   // get the tail of the valid blocks (ordered write)
-   tail = valid_messages;
-   
-   while(get_pointer(tail->val_next) != change_validity(NULL)){       // the tail has next pointer NULL but VALID
-      
-      tail = get_pointer(tail->val_next);
-      if(tail->val_next == NULL){
-         
-         printk("%s: not able to find the tail due to concurrency, retry\n", MODNAME);
-         __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
-         wake_up_interruptible(&umount_queue);
-         return -EAGAIN;
-      }
-   }
-
-   AUDIT printk(KERN_INFO "%s: the tail is at block %d\n", MODNAME, tail->num);   
-
-   // write lock on the selected block
-   mutex_lock(&(selected_block->lock));
-   
-   
-   // BLOCK VALIDATION – another writer could select this block and insert it in the valid list.
+   // BLOCK VALIDATION – another writer could select this block and attempt to validate it.
    // The CAS can detect the change (current_block.val_next not found) and stop this insertion.
    old_next = __sync_val_compare_and_swap(&(selected_block->val_next), current_block.val_next, change_validity(NULL));
 
    if(old_next == change_validity(NULL)){
       // FAILURE - new value returned
-      printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, change_validity(selected_block->val_next), change_validity(NULL));
+      printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, selected_block->val_next, change_validity(NULL));
       ret = -EAGAIN;
       goto put_exit;
    }
    
    // SUCCESS - old value returned
-   AUDIT printk(KERN_INFO "%s: CAS succeded - selected.next = %px (should be NULL)\n", MODNAME, selected_block->val_next);
-   
+   AUDIT printk(KERN_INFO "%s: CAS succeded - selected.next = %px (should be valid NULL)\n", MODNAME, selected_block->val_next);
 
-   
-   cas = __sync_val_compare_and_swap(&(tail->val_next), change_validity(NULL), selected_block);    // ALL OR NOTHING - scambio il campo next della coda (NULL)
-                                                                                                   // con il puntatore all'elemento che sto inserendo
-                                                                                                   // (ptr nel kernel ha bit a sx = 1, valido). Il bit di validità nel
-                                                                                                   // puntatore garantisce il fallimento in caso di interferenze
 
+
+   // get the cached data
+   block_to_write = offset(selected_block->num);
+   bh = (struct buffer_head *)sb_bread(temp->bd_super, block_to_write);
+   if(!bh){
+      selected_block->val_next = NULL;
+      ret = -EIO;
+      goto put_exit;
+   }
+   
+   // UPDATE DATA: the concurrent insertion on this block stopped on previous CAS so this is the only writer on bh->b_data
+   if (bh->b_data != NULL){ 
+      strncpy(bh->b_data, source, DATA_SIZE);  
+      mark_buffer_dirty(bh);
+   }
+   
+   
+   // get the tail of the valid blocks
+   tail = valid_messages;
+   while(get_pointer(tail->val_next) != change_validity(NULL)){       // the tail has next pointer NULL but VALID
+      
+      tail = get_pointer(tail->val_next);
+      if(tail->val_next == NULL){
+         printk("%s: not able to find the tail due to concurrency, retry\n", MODNAME);
+         selected_block->val_next = NULL;
+         ret = -EAGAIN;
+         goto put_exit;
+      }
+   }
+
+   AUDIT printk(KERN_INFO "%s: the tail is at block %d\n", MODNAME, tail->num);
+   
+   // INSERT THE NODE in the valid list. Exchange the tail's next field (valid NULL) with the pointer
+   // to the new element. Interferences are detected: the tail's next field has the validity bit included
+   cas = __sync_val_compare_and_swap(&(tail->val_next), change_validity(NULL), selected_block);
+   
+   
    if(cas != change_validity(NULL)){
       // FAILURE - new value returned
-      printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, change_validity(tail->val_next), selected_block);
+      printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, tail->val_next, selected_block);
       selected_block->val_next = NULL;
       ret = -EAGAIN;
       goto put_exit;
@@ -122,25 +131,9 @@ int dev_put_data(char* source, size_t size){
    }
    
    // SUCCESS - old value returned
-   AUDIT printk(KERN_INFO "%s: CAS succeded - ex_coda.next = %px, &inserted_block = %px\n", MODNAME, change_validity(tail->val_next), selected_block);
+   AUDIT printk(KERN_INFO "%s: CAS succeded - tail.next = %px, &inserted_block = %px\n", MODNAME, tail->val_next, selected_block);
    
    
-
-   // get the cached data
-   
-   block_to_write = offset(selected_block->num);
-   bh = (struct buffer_head *)sb_bread(temp->bd_super, block_to_write);
-   if(!bh){
-      selected_block->val_next = NULL;
-      goto put_exit;
-      return -EIO;
-   }
-   
-   // UPDATE DATA: the update is not atomic, the lock protect concurrent updates
-   if (bh->b_data != NULL){ 
-      strncpy(bh->b_data, source, DATA_SIZE);  
-      mark_buffer_dirty(bh);
-
 #ifdef FORCE_SYNC
       // force the synchronous write on the device
       if(sync_dirty_buffer(bh) == 0){
@@ -149,7 +142,7 @@ int dev_put_data(char* source, size_t size){
          printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
 #endif
    
-   }
+   
 
    brelse(bh);
 
@@ -162,7 +155,6 @@ int dev_put_data(char* source, size_t size){
    ret = selected_block->num;
 
 put_exit:   
-   mutex_unlock(&(selected_block->lock));  
    __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
    AUDIT printk(KERN_INFO "bdev_usage = %lu\n", bdev_md.bdev_usage);
    wake_up_interruptible(&umount_queue);
@@ -171,8 +163,7 @@ put_exit:
    return ret;
 
 }
-
-
+// END ADDED
 
 
 
@@ -252,9 +243,7 @@ get_exit:
 }
 
 
-
-// INVALIDATE DATA
-
+// ADDED
 int dev_invalidate_data(int offset){
 
    int ret;
@@ -282,29 +271,37 @@ int dev_invalidate_data(int offset){
    }
 
 
-   ret = 0;
-   selected = &block_metadata[offset];   
-   predecessor = valid_messages;                                                   
-                                                        
-   // get write lock on the element to invalidate
-   mutex_lock(&(selected->lock));
+   // get write lock 
+   mutex_lock(&(rcu.lock));
 
-   // if the block is already invalid there is nothing to do   
-   if(get_validity(selected->val_next) == 0){
+   ret = 0;
+   selected = valid_messages;
+   predecessor = valid_messages;
+   
+   // get the block to invalidate
+   while(get_pointer(selected->val_next) != change_validity(NULL)){
+      
+      selected = get_pointer(selected->val_next);
+      if(selected->num == offset){
+         printk("%s: found block to invalidate\n", MODNAME);
+         break;   
+      }
+   }
+
+   // if the block isn't in the list is already invalid and there is nothing to do 
+   if (selected->num != offset){
       printk("%s: the block %d is already invalid, nothing to do\n", MODNAME, offset);
       ret = -ENODATA;
-      goto inv_end;
+      goto inv_end;    
    }
 
 
-   // Get the predecessor (N-1) of the block to invalidate (N) 
-   
+   // Get the predecessor (N-1) of the block to invalidate (N) - no concurrency here
    while(get_pointer(predecessor->val_next) != &block_metadata[offset]){
    
       predecessor = get_pointer(predecessor->val_next);
       if(predecessor == change_validity(NULL)){
          printk("%s: element to invalidate not found, inconsistent values in metadata", MODNAME);
-         selected->val_next = change_validity(selected->val_next);
          ret = -1;
          goto inv_end;
       }
@@ -312,26 +309,17 @@ int dev_invalidate_data(int offset){
    AUDIT printk(KERN_INFO "%s: predecessor is the block %d\n", MODNAME, predecessor->num);
  
 
-   // invalidate the block - it is valid now, we checked after the lock
-   
-   selected->val_next = change_validity(selected->val_next);                                               
-   AUDIT printk(KERN_INFO "%s: now selected block has val_next %px\n", MODNAME, selected->val_next);
-
-
-   // unhook the element               DOVE                    COSA C'ERA              COSA CI METTO
+   // unhook the element
    // get_pointer function validate in every case the predecessor: the CAS wants to find the predecessor in a valid state
-   // in order to avoid problems in invalidations of adjacent elements
-   cas = __sync_val_compare_and_swap(&(predecessor->val_next), get_pointer(predecessor->val_next), change_validity(selected->val_next));
+   cas = __sync_val_compare_and_swap(&(predecessor->val_next), get_pointer(predecessor->val_next), get_pointer(selected->val_next));
    
 
    if(cas == change_validity(selected->val_next)){
       // FAILURE - new value returned
-      printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, predecessor->val_next, change_validity(selected->val_next));
-      selected->val_next = change_validity(selected->val_next);
+      printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, predecessor->val_next, get_pointer(selected->val_next));
       ret = -EAGAIN;
       goto inv_end;
    }
-   
 
    // SUCCESS - old value returned
    AUDIT printk(KERN_INFO "%s: CAS succeded - prev.next = %px - invalidated.next = %px\n", MODNAME, predecessor->val_next, selected->val_next);
@@ -352,17 +340,20 @@ int dev_invalidate_data(int offset){
    
    wait_event_interruptible(wqueue, rcu.pending[index] >= grace_period_threads);
    rcu.pending[index] = 0;
-   AUDIT printk(KERN_INFO "%s: invalidation completed!\n", MODNAME);
+
+   // invalidate the block - it should be valid, redundant check
+   if(get_validity(selected->val_next)) selected->val_next = change_validity(selected->val_next);
+   AUDIT printk(KERN_INFO "%s: invalidation completed! Now selected block has val_next %px\n", MODNAME, selected->val_next);
 
 
 inv_end: 
-   mutex_unlock(&(selected->lock)); 
+   mutex_unlock(&(rcu.lock)); 
    __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
    AUDIT printk(KERN_INFO "bdev_usage = %lu\n", bdev_md.bdev_usage);
    wake_up_interruptible(&umount_queue); 
    return ret;
 }
-
+// END ADDED
 
 
 

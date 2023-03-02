@@ -15,6 +15,7 @@
 #define DATA_SIZE (DEFAULT_BLOCK_SIZE - METADATA_SIZE)
 #define NBLOCKS 4
 #define MAXBLOCKS 5
+#define PERIOD 5
 #define PATH_TO_IMAGE "/home/elisa/Scrivania/umessage/image"
 
 // MAJOR&MINOR UTILS
@@ -31,7 +32,7 @@
 struct block_node {
     struct block_node *val_next;        // the leftmost bit indicate the validity of the current block
     int num;                            // number of the block (ignores the super block and the inode)
-    struct mutex lock;                  // write lock on the block
+    // struct mutex lock;                  // write lock on the block ADDED
 };
 
 // DEVICE'S BLOCK LAYOUT - it is modified only during the unmounting of the filesystem
@@ -61,6 +62,7 @@ struct counter{
         unsigned long pending[2];                           // reader that released the counter in the current epoch
         unsigned long epoch;                                // current epoch readers (leftmost bit indicate the current epoch)
         int next_epoch_index;                               // index to access pending[] in the next epoch
+        struct mutex lock;                                  // write lock on the list ADDED
 };
 
 

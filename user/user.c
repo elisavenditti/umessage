@@ -67,13 +67,12 @@ void get_data(void) {
 	// invoke syscall
 	destination = (char*) malloc(size);
 	ret = syscall(GET, offset, destination, size);
-	printf("ret=%d (%s)\n", ret, strerror(errno));
 
-	if(ret >= 0) 				printf("%d byte read from block %ld: '%s'\n", ret, offset, destination);
-	else if(errno == EINVAL)	printf("error: invalid parameters\n");
-	else if(errno == ENODATA)	printf("error: block requested is not valid\n");
-	else if(errno == ENODEV)	printf("error: no filesystem mounted\n");
-	else 						printf("generic error\n");
+	if(ret >= 0) 						printf("%d byte read from block %ld: '%s'\n", ret, offset, destination);
+	else if(ret<0 && errno == EINVAL)	printf("error: invalid parameters\n");
+	else if(ret<0 && errno == ENODATA)	printf("error: block requested is not valid\n");
+	else if(ret<0 && errno == ENODEV)	printf("error: no filesystem mounted\n");
+	else 								printf("generic error\n");
 	
 
 	free(destination);
@@ -95,10 +94,10 @@ void put_data(void) {
 	get_input(DATA_SIZE, input);
 
 	ret = syscall(PUT, input, strlen(input));
-	if(ret >= 0) 				printf("message succesfully inserted in block %d\n", ret);
-	else if(errno == ENOMEM)	printf("error: the device is full of messages or there are problems in memory allocation\n");
-	else if(errno == ENODEV)	printf("error: no filesystem mounted\n");
-	else 						printf("generic error\n");
+	if(ret >= 0) 						printf("message succesfully inserted in block %d\n", ret);
+	else if(ret<0 && errno == ENOMEM)	printf("error: the device is full of messages or there are problems in memory allocation\n");
+	else if(ret<0 && errno == ENODEV)	printf("error: no filesystem mounted\n");
+	else 								printf("generic error\n");
 
 	printf("\n\nPress enter to exit: ");
 	while (getchar() != '\n');
@@ -120,11 +119,11 @@ void invalidate_data(void) {
 
 	ret = syscall(INVALIDATE, offset);
 	
-	if(ret >= 0) 				printf("block %d succesfully invalidated\n", offset);
-	if(errno == EINVAL)			printf("error: invalid parameters\n");
-	else if(errno == ENODATA) 	printf("error: block requested is already invalid, nothing to do\n");
-	else if(errno == ENODEV)	printf("error: no filesystem mounted\n");
-	else 						printf("generic error\n");
+	if(ret >= 0) 						printf("block %d succesfully invalidated\n", offset);
+	else if(ret<0 && errno == EINVAL)	printf("error: invalid parameters\n");
+	else if(ret<0 && errno == ENODATA) 	printf("error: block requested is already invalid, nothing to do\n");
+	else if(ret<0 && errno == ENODEV)	printf("error: no filesystem mounted\n");
+	else 								printf("generic error\n");
 	
 
 	printf("\n\nPress enter to exit: ");

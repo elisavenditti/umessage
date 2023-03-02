@@ -20,6 +20,7 @@
 #include <asm/apic.h>
 #include <asm/io.h>
 #include <linux/syscalls.h>
+#include <linux/delay.h>
 #include "lib/include/scth.h"
 #include "umessage_header.h"
 #include "umessage_device_driver.c"
@@ -49,6 +50,43 @@ struct counter rcu __attribute__((aligned(64)));
 int Major;
 
 
+// KERNEL THREAD: reset the epoch counter
+void * house_keeper(void){
+
+	int grace_epoch;
+	unsigned long last_epoch;
+	unsigned long updated_epoch;
+	unsigned long grace_period_threads;
+	int index;
+
+redo:
+        // "period" seconds sleep
+	msleep(PERIOD*1000); 
+
+	mutex_lock(&(rcu.lock));
+
+        updated_epoch = (rcu.next_epoch_index) ? MASK : 0;
+        rcu.next_epoch_index += 1;
+	rcu.next_epoch_index %= 2;	
+
+	last_epoch = __atomic_exchange_n (&(rcu.epoch), updated_epoch, __ATOMIC_SEQ_CST);
+	index = (last_epoch & MASK) ? 1 : 0; 
+	grace_period_threads = last_epoch & (~MASK); 
+
+	AUDIT printk(KERN_INFO "%s: HOUSE KEEPING (waiting %lu readers on index = %d)\n", MODNAME, grace_period_threads, index);
+	
+	
+   
+        wait_event_interruptible(wqueue, rcu.pending[index] >= grace_period_threads);
+        rcu.pending[index] = 0;
+	mutex_unlock(&(rcu.lock));
+
+	goto redo;
+
+	return NULL;
+}
+
+
 // STARTUP AND SHUTDOWN FUNCTIONS
 
 int init_module(void) {
@@ -58,6 +96,8 @@ int init_module(void) {
         int ret;
         int ret2;
         struct block_node *head;
+	struct task_struct *the_daemon;
+        char name[128] = "the_reset_daemon";
         
 	
 	printk("%s: received sys_call_table address %px\n", MODNAME, (void*)the_syscall_table);
@@ -87,7 +127,7 @@ int init_module(void) {
 
 
 
-        // idevice driver initialization
+        // device driver initialization
 
         Major = __register_chrdev(0, 0, 256, DEVICE_NAME, &fops);
 	if (Major < 0) {
@@ -109,20 +149,24 @@ int init_module(void) {
 
         
         // metadata array initialization
+
         for(k=0; k<MAXBLOCKS; k++){
                 block_metadata[k].val_next = NULL;                  // null is invalid (leftmost bit set to 0)
                 block_metadata[k].num = k;
-                mutex_init(&block_metadata[k].lock);
+                // mutex_init(&block_metadata[k].lock); ADDED
         }
 
         // counter init
+
         rcu.epoch = 0x0;
 	rcu.pending[0] = 0x0;
         rcu.pending[1] = 0x0;
-	rcu.next_epoch_index = 0x1;	
+	rcu.next_epoch_index = 0x1;
+        mutex_init(&rcu.lock); //ADDED
 
 
         // creation of a permanent head to hook elements
+
         head = (struct block_node *) kmalloc(sizeof(struct block_node), GFP_KERNEL);
         if(head == NULL){
                 printk("%s: kmalloc error, can't allocate memory needed to manage permanent head\n",MODNAME);
@@ -131,8 +175,23 @@ int init_module(void) {
 
         head->val_next = change_validity(NULL);
         head->num = -1;
-        mutex_init(&head->lock);
+        // mutex_init(&head->lock); ADDED
         valid_messages = head;
+        printk("%s: metadata initialized\n",MODNAME);
+
+
+        // create kernel thread to reset epoch counter and avoid overflow
+
+	the_daemon = kthread_create(thread_function, NULL, name);
+	if(the_daemon) {
+		wake_up_process(the_daemon);
+                printk("%s: kernel daemon initialized\n",MODNAME);
+	}
+        else{
+                printk("%s: failed initializing kernel daemon\n",MODNAME);
+                return -1;
+        }
+	
         return 0;
 
 }

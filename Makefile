@@ -21,8 +21,8 @@ umount-mod:
 	rmmod umessage_module
 	
 create-fs:
-	# dd bs=4096 count=$(NBLOCKS) if=/dev/zero of=image
-	# ./umessage_filesystem/makefs_umessagefs image $(NBLOCKS)
+	dd bs=4096 count=$(NBLOCKS) if=/dev/zero of=image
+	./umessage_filesystem/makefs_umessagefs image $(NBLOCKS)
 	mkdir mount
 	
 mount-fs:
