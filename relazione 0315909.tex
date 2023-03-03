@@ -1,0 +1,138 @@
+\documentclass[a4paper,12pt,oneside]{book}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{a4paper, top=3cm, left=3.5cm, right=3.5cm, heightrounded, bindingoffset=5mm}
+\pagestyle{plain}
+
+\title{Relazione progetto Sistemi Operativi Avanzati}
+\author{Elisa Venditti}
+\date{}
+
+\begin{document}
+	\begin{titlepage}	
+		\maketitle
+	\end{titlepage}
+
+	%inserisco l'indice in pagine numerate con i numeri romani
+	\frontmatter
+	\tableofcontents
+	\mainmatter
+
+	%CAPITOLO 1
+	\chapter{Struttura generale}
+	Questo è il primo capitolo: spiega l'architettura del sistema. Il driver esporta delle system calls non supportate dal VFS:
+	\begin{itemize}
+		\item get\_data
+		\item put\_data
+		\item invalidate\_data
+	\end{itemize}
+	e delle system call del VFS. Infatti definisce le seguenti file operations che permettono al codice del driver di essere richiamato da syscall del VFS:
+	\begin{itemize}
+		\item dev\_open
+		\item dev\_release
+		\item dev\_read
+	\end{itemize}
+	
+	Le system call supportate dal VFS sono delle file operations ... Le altre funzionalità da implementare lavorano a livello di blocco, accedono al block device tramite la cache ... non possono utilizzare le file operations perchè non lavorano a livello di file. Dunque, per essere chiamate dall'utente, le devo registrare come system call.
+
+	\section{Filesystem}
+	Parlo del singlefilefs che usa il driver in modo da essere visto come un file in un filesystem. Parlo delle variabili utilizzate per sincronizzare (mount unico ad esempio). Faccio le considerazioni sulla cache; parlo del blkget per capire su quale device sono (e spiego perchè ho usato questo metodo); parlo della mount con il  loop device. 
+	
+
+
+
+
+	%CAPITOLO 2
+	\chapter{Gestione dei messaggi utente}
+	Questo è il secondo capitolo
+	
+	\section{Layout del blocco}
+	Parlo dei metadati ... come strutturo il blocco, a cosa servono i metadati e come/dove li rendo persistenti	
+	
+	\section{Strutture del kernel}
+	Parlo delle strutture nel kernel: block\_node(?), valid list e block\_metadata. La presenza nella valid list indica la validità del blocco. Spiega le macro utilizzate ecc ...
+
+	\section{Sincronizzazione con RCU}
+	Parlo in generale di tutti i meccanismi: write lock per chi invalida, chi scrive non si blocca ma attua un approccio all-or-nothing (riferimento alla sottosezione di giù). Inoltre parla del contatore RCU innalzato dai lettori che permette di attendere l'assenza di lettori prima di \emph{riutilizzare} un'area.
+
+	\subsection{read}
+	Pseudocodice della \emph{read} + considerazioni sul perchè va bene per le richieste del prof.
+	\subsection{get\_data}
+	Pseudocodice della \emph{get\_data} + considerazioni sul perchè va bene per le richieste del prof.
+	\subsection{put\_data}
+	Pseudocodice della \emph{put\_data} + considerazioni sul perchè va bene per le richieste del prof. Ricorda la scrittura sincrona vs asicrona con il kernel daemon.
+	\subsection{invalidate\_data}
+	Pseudocodice della \emph{invalidate\_data} + considerazioni sul perchè va bene per le richieste del prof.		
+		
+
+
+
+
+	%CAPITOLO 3
+	\chapter{Considerazioni sulla concorrenza}
+	Questo è il terzo capitolo: spiega chi si intralcia.
+	
+	\section{Inserimento}
+	Parlo nello specifico di tutte le problematiche che affronta il mio codice. Magari in forma tabellare.
+
+	\section{Invalidazione}
+	Parlo nello specifico di tutte le problematiche che affronta il mio codice. Magari in forma tabellare.
+
+
+
+	%CAPITOLO 4
+	\chapter{Codice utente}
+	Questo è il quarto capitolo: spiega come fare il test (hai un txt sul desktop). Dopo questo test il prof è in grado di vedere che la concorrenza funziona.
+
+
+
+
+
+
+
+
+
+
+
+
+
+	\section{Comandi per il font}
+	Questa è la prima sezione. 
+	\par Ho generato il rientro iniziale con uno slash par... Ma nella prima riga dopo il titolo non posso farlo. Posso scrivere in \textbf{grassetto}, oppure in \emph{corsivo}; come una \texttt{macchina da scrivere}; o \underline{sottolineato}.
+	\subsection{Comandi per le note}
+	Questa è la prima sottosezione.
+	\par  Voglio inserire una nota per la parola ciao\footnote{ciao è una parola italiana per salutare.}.
+	\subsubsection{Punti elenco}	
+	Dalla sotto-sottosezione in poi non vengono più indicizzate dall'indice. Ecco un elenco dei BTS:
+	\begin{itemize}
+		\item Jungkook
+		\begin{itemize}
+			\item 1 settembre
+			\item 1997
+		\end{itemize}
+		\item Taehyung
+		\begin{enumerate}
+			\item è il mio bias
+			\item è bellissimo
+		\end{enumerate}
+		\item Jimin
+		\item Jhope
+		\item Suga
+		\item Namjoon
+		\item Jin
+	\end{itemize}
+	\paragraph{Primo paragrafo}
+	Questo è un paragrafo. Se vuoi leffere qualcosa sui riferimenti vai a \ref{sec:my_rif}
+	\subparagraph{Primo sottoparagrafo}
+	Primo dovumento in \LaTeX creato lol
+
+	\section{Riferimenti}\label{sec:my_rif}
+	Questa è la seconda sezione e serve per introdurre i riferimenti.
+	
+	
+	
+	
+	
+\end{document}
