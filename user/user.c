@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pthread.h>
 #include <sys/ioctl.h>
 #include "../user_hdr.h"
 
@@ -12,6 +13,7 @@
 #define PUT 	   156
 #define GET	   	   174
 
+pthread_barrier_t barrier;
 
 char* get_input(int size, char* str){
 	
@@ -67,13 +69,7 @@ void get_data(void) {
 	// invoke syscall
 	destination = (char*) malloc(size);
 	ret = syscall(GET, offset, destination, size);
-
-	if(ret >= 0) 						printf("%d byte read from block %ld: '%s'\n", ret, offset, destination);
-	else if(ret<0 && errno == EINVAL)	printf("error: invalid parameters\n");
-	else if(ret<0 && errno == ENODATA)	printf("error: block requested is not valid\n");
-	else if(ret<0 && errno == ENODEV)	printf("error: no filesystem mounted\n");
-	else 								printf("generic error\n");
-	
+	print_geterror(ret, offset, destination);
 
 	free(destination);
 	printf("\n\nPress enter to exit: ");
@@ -90,15 +86,11 @@ void put_data(void) {
 	char input[DATA_SIZE];
 	
 	printf("[PUT DATA PARAMETERS]");
-	printf("\n*Message (up to %d bytes): ", DATA_SIZE);
+	printf("\n*Message (up to %ld bytes): ", DATA_SIZE);
 	get_input(DATA_SIZE, input);
 
 	ret = syscall(PUT, input, strlen(input));
-	if(ret >= 0) 						printf("message succesfully inserted in block %d\n", ret);
-	else if(ret<0 && errno == ENOMEM)	printf("error: the device is full of messages or there are problems in memory allocation\n");
-	else if(ret<0 && errno == ENODEV)	printf("error: no filesystem mounted\n");
-	else 								printf("generic error\n");
-
+	print_puterror(ret);
 	printf("\n\nPress enter to exit: ");
 	while (getchar() != '\n');
 	return;
@@ -118,13 +110,7 @@ void invalidate_data(void) {
 	offset = strtol(input, NULL, 10);
 
 	ret = syscall(INVALIDATE, offset);
-	
-	if(ret >= 0) 						printf("block %d succesfully invalidated\n", offset);
-	else if(ret<0 && errno == EINVAL)	printf("error: invalid parameters\n");
-	else if(ret<0 && errno == ENODATA) 	printf("error: block requested is already invalid, nothing to do\n");
-	else if(ret<0 && errno == ENODEV)	printf("error: no filesystem mounted\n");
-	else 								printf("generic error\n");
-	
+	print_invalidateerror(ret, offset);
 
 	printf("\n\nPress enter to exit: ");
 	while (getchar() != '\n');
@@ -133,41 +119,84 @@ void invalidate_data(void) {
 			
 }
 
+void* multiple_put(void* arg){
+	
+	int i, ret;
+	char str[NUM_DIGITS(NREQUESTS)];
+
+	pthread_barrier_wait(&barrier);
+
+	for(i=0; i<NREQUESTS; i++){
+		if(i==NREQUESTS/2) sleep(12);
+		sprintf(str, "%d", i);
+		ret = syscall(PUT, str, strlen(str));
+		print_puterror(ret);
+	}
+	pthread_exit(NULL);
+}
+
+void* multiple_get(void* arg){
+	
+	int i, ret;
+	char destination[124];
+	
+	pthread_barrier_wait(&barrier);
+	
+	for(i=0; i<NREQUESTS; i++){
+		if(i==NREQUESTS/2) sleep(12);
+		ret = syscall(GET, 0, destination, 100);
+		print_geterror(ret, 100, destination);
+	}
+
+	pthread_exit(NULL);
+}
+
+void* multiple_invalidate(void* arg){
+	
+	int i, ret;
+
+	pthread_barrier_wait(&barrier);
+	
+	for(i=0; i<NREQUESTS; i++){
+		ret = syscall(INVALIDATE, i%NBLOCKS);
+		print_invalidateerror(ret, i%NBLOCKS);
+	}
+
+	pthread_exit(NULL);
+}
 
 
 int main(int argc, char** argv){
 
- 	int op1;
-    long int arg;	
-	char operation;
-	int ret, ret_sys;
-	size_t size = 10;
-	char* lettura = malloc(size);
-	char mount_command[1024];
 	char input[2];
-
+	int op1,ret_sys;
+	char mount_command[1024];
+	pthread_t tid1, tid2, tid3;
+	
 
 	while (1) {
 		
 		printf("%s\nSelect an option: ", homepage);
 		get_input(2, input);
+		
+		
 		op1 = strtol(input, NULL, 10);
-
 		if (op1 > 6){
 			printf("\nerror - incorrect input\n");
 			return -1;
 		}
 		
+
 		if (op1 == 1) put_data();
 		else if (op1 == 2) get_data();
 		else if (op1 == 3) invalidate_data();
+
 		else if (op1 == 4) {
 			
 			//mount -o loop -t singlefilefs image ./mount/
 			sprintf(mount_command,"mount -o loop -t singlefilefs %s ./", PATH_TO_IMAGE);
 			ret_sys = system(mount_command);
-			if (ret_sys > 0) printf("mount completed successfully.\n");
-			else printf("error: %s\n", strerror(errno));
+			printf("outcome: %s\n", strerror(errno));
 			
 			printf("\n\nPress enter to exit: ");
 			while (getchar() != '\n');
@@ -176,17 +205,27 @@ int main(int argc, char** argv){
 			
 			sprintf(mount_command,"umount ./");
 			ret_sys = system(mount_command);
-			if (ret_sys > 0) printf("umount completed successfully.\n");
-			else printf("error: %s\n", strerror(errno));
+			printf("outcome: %s\n", strerror(errno));
 			
 			printf("\n\nPress enter to exit: ");
 			while (getchar() != '\n');
-		}
-		else if (op1 == 6) {
-			return;
-		}
-		else {
-			return;
-		}
+
+		} else if(op1 == 6){
+
+			pthread_barrier_init(&barrier, NULL, 3);
+			pthread_create(&tid1,NULL,multiple_put,NULL);
+			pthread_create(&tid2,NULL,multiple_get,NULL);
+			pthread_create(&tid3,NULL,multiple_invalidate,NULL);
+			pthread_join(tid1, NULL);
+			pthread_join(tid2, NULL);
+			pthread_join(tid3, NULL);
+			pthread_barrier_destroy(&barrier);
+			
+			printf("\n\nPress enter to exit: ");
+			while (getchar() != '\n');
+			
+		} 
+		
+		else return 0;
 	}
 }

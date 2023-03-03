@@ -50,10 +50,10 @@ struct counter rcu __attribute__((aligned(64)));
 int Major;
 
 
-// KERNEL THREAD: reset the epoch counter
-void * house_keeper(void){
 
-	int grace_epoch;
+// KERNEL THREAD: reset the epoch counter
+int house_keeper(void* data){
+
 	unsigned long last_epoch;
 	unsigned long updated_epoch;
 	unsigned long grace_period_threads;
@@ -75,15 +75,12 @@ redo:
 
 	AUDIT printk(KERN_INFO "%s: HOUSE KEEPING (waiting %lu readers on index = %d)\n", MODNAME, grace_period_threads, index);
 	
-	
-   
         wait_event_interruptible(wqueue, rcu.pending[index] >= grace_period_threads);
         rcu.pending[index] = 0;
 	mutex_unlock(&(rcu.lock));
 
 	goto redo;
-
-	return NULL;
+	return 0;
 }
 
 
@@ -151,9 +148,8 @@ int init_module(void) {
         // metadata array initialization
 
         for(k=0; k<MAXBLOCKS; k++){
-                block_metadata[k].val_next = NULL;                  // null is invalid (leftmost bit set to 0)
+                block_metadata[k].val_next = NULL;              // null is invalid (leftmost bit set to 0)
                 block_metadata[k].num = k;
-                // mutex_init(&block_metadata[k].lock); ADDED
         }
 
         // counter init
@@ -162,7 +158,7 @@ int init_module(void) {
 	rcu.pending[0] = 0x0;
         rcu.pending[1] = 0x0;
 	rcu.next_epoch_index = 0x1;
-        mutex_init(&rcu.lock); //ADDED
+        mutex_init(&rcu.lock);
 
 
         // creation of a permanent head to hook elements
@@ -175,14 +171,13 @@ int init_module(void) {
 
         head->val_next = change_validity(NULL);
         head->num = -1;
-        // mutex_init(&head->lock); ADDED
         valid_messages = head;
         printk("%s: metadata initialized\n",MODNAME);
 
 
         // create kernel thread to reset epoch counter and avoid overflow
 
-	the_daemon = kthread_create(thread_function, NULL, name);
+	the_daemon = kthread_create(house_keeper, NULL, name);
 	if(the_daemon) {
 		wake_up_process(the_daemon);
                 printk("%s: kernel daemon initialized\n",MODNAME);
@@ -232,6 +227,6 @@ void cleanup_module(void) {
         
         // deallocation of the permanent head
         kfree(valid_messages);
-	return;
+        return;
         
 }

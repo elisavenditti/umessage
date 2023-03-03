@@ -6,6 +6,7 @@
 
 // STANDARD DEFINE
 #define FORCE_SYNC
+#define TEST
 #define MODNAME "MESSAGE KEEPER"
 #define AUDIT if(1)
 #define DEVICE_NAME "umessage"
@@ -15,7 +16,7 @@
 #define DATA_SIZE (DEFAULT_BLOCK_SIZE - METADATA_SIZE)
 #define NBLOCKS 4
 #define MAXBLOCKS 5
-#define PERIOD 5
+#define PERIOD 30
 #define PATH_TO_IMAGE "/home/elisa/Scrivania/umessage/image"
 
 // MAJOR&MINOR UTILS
@@ -30,9 +31,8 @@
 
 // KERNEL METADATA to manage messages
 struct block_node {
-    struct block_node *val_next;        // the leftmost bit indicate the validity of the current block
-    int num;                            // number of the block (ignores the super block and the inode)
-    // struct mutex lock;                  // write lock on the block ADDED
+    struct block_node *val_next;                            // the leftmost bit indicate the validity of the current block
+    int num;                                                // number of the block (ignores the super block and the inode)
 };
 
 // DEVICE'S BLOCK LAYOUT - it is modified only during the unmounting of the filesystem
@@ -62,7 +62,7 @@ struct counter{
         unsigned long pending[2];                           // reader that released the counter in the current epoch
         unsigned long epoch;                                // current epoch readers (leftmost bit indicate the current epoch)
         int next_epoch_index;                               // index to access pending[] in the next epoch
-        struct mutex lock;                                  // write lock on the list ADDED
+        struct mutex lock;                                  // write lock on the list
 };
 
 
@@ -74,12 +74,6 @@ extern struct block_node block_metadata[MAXBLOCKS];         // all blocks of the
 extern wait_queue_head_t umount_queue;                      // wait queue to stop until the bdev can be deallocated
 extern struct counter rcu;
 extern struct bdev_metadata bdev_md;
-
-// extern unsigned long epoch;                                 // current epoch readers (leftmost bit indicate the current epoch)
-// extern int next_epoch_index;                                // index to access pending[] in the next epoch
-// extern unsigned long pending[2];                            // reader that released the counter in the current epoch
-// extern struct block_device *bdev;                           // block device to get data(initialized when the FS is mounted)s
-// extern unsigned long bdev_usage;                            // operations that should complete before deallocation of bdev
 
 
 // VFS NON-SUPPORTED FEATURES OF DEVICE DRIVER 

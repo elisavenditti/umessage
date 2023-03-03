@@ -12,6 +12,7 @@
 #define MASK 0x8000000000000000
 #define PATH_TO_IMAGE "/home/elisa/Scrivania/umessage/image"
 #define NBLOCKS 4
+#define NREQUESTS 10
 
 #define NUM_DIGITS(n) ((int)log10(n) + 1)
 
@@ -41,19 +42,67 @@ char homepage[] = {"\033[2J\033[H  \
 		\t3) INVALIDATE DATA	- Cancel the content of a block\n\
 		\t4) MOUNT FILESYSTEM  	- In the current directory\n\
 		\t5) UMOUNT FILESYSTEM\n\
-		\t6) Exit\n\
+		\t6) N REQUESTS TEST\n\
+		\t7) Exit\n\
 		\n***********************************************************************************\n"};
 
-/*// printf("\033[2J\033[H");
-		// printf("\n\n\n***********************************************************************************");
-		// printf("\n\tUSER-MESSAGE SERVICE | HOW CAN I HELP YOU?\n\n");
-		// printf("\t1) PUT DATA 		   - Write message in a free block\n");
-		// printf("\t2) GET DATA 		   - Retrieve message in a block\n");
-		// printf("\t3) INVALIDATE DATA   - Cancel the content of a block\n");
-		// printf("\t4) MOUNT FILESYSTEM  - In the current directory\n");
-		// printf("\t5) UMOUNT FILESYSTEM - \n");
-		// printf("\t6) Exit\n");
-		// printf("\n***********************************************************************************\n");*/
+#define print_geterror(ret, offset, destination) \
+    if (ret >= 0) { \
+        printf("%d byte read from block %d: '%s'\n", ret, offset, destination); \
+    } else { \
+        switch (errno) { \
+            case EINVAL: \
+                printf("error: invalid parameters\n"); \
+                break; \
+            case ENODATA: \
+                printf("error: block requested is not valid\n"); \
+                break; \
+            case ENODEV: \
+                printf("error: no filesystem mounted\n"); \
+                break; \
+            default: \
+                printf("generic error\n"); \
+                break; \
+        } \
+    }
+
+#define print_puterror(ret) \
+    if (ret >= 0) { \
+        printf("message succesfully inserted in block %d\n", ret); \
+    } else { \
+        switch (errno) { \
+            case ENOMEM: \
+                printf("error: the device is full of messages or there are problems in memory allocation\n"); \
+                break; \
+            case ENODEV: \
+                printf("error: no filesystem mounted\n"); \
+                break; \
+            default: \
+                printf("generic error\n"); \
+                break; \
+        } \
+    }
+
+#define print_invalidateerror(ret, offset) \
+    if (ret >= 0) { \
+        printf("block %d succesfully invalidated\n", offset); \
+    } else { \
+        switch (errno) { \
+            case EINVAL: \
+                printf("error: invalid parameters\n"); \
+                break; \
+            case ENODATA: \
+                printf("error: block requested is already invalid, nothing to do\n"); \
+                break; \
+            case ENODEV: \
+                printf("error: no filesystem mounted\n"); \
+                break; \
+            default: \
+                printf("generic error\n"); \
+                break; \
+        } \
+    }
+
 
 
 #endif
