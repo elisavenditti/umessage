@@ -18,9 +18,9 @@ CONFIGURAZIONE
 
 Modulo sviluppato
 
-3) make 
-4) make create-fs                           formattazione del block device logico (file)
-5) sudo make mount-mod                      definisce l'implementazione di: syscall, device driver e filesystem
+1) make 
+2) make create-fs                           formattazione del block device logico (file)
+3) sudo make mount-mod                      definisce l'implementazione di: syscall, device driver e filesystem
                                             chiama get_entries per trovare dove installare le syscall implementate, infine le installa
                                             installa il driver e il filesystem
-6) sudo make mount-fs                       monta il filesystem presente sul block device logico con -o loop
+4) sudo make mount-fs                       monta il filesystem presente sul block device logico con -o loop

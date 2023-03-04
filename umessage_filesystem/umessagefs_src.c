@@ -93,12 +93,13 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
 }
 
 static void singlefilefs_kill_superblock(struct super_block *s) {
+    struct block_device *cas;
     struct block_device *temp_bdev = bdev_md.bdev;
     
     strncpy(md.block_device_name, " ", 1);
     md.block_device_name[1] = '\0';
     
-    bdev_md.bdev = NULL;
+    cas = __sync_val_compare_and_swap(&(bdev_md.bdev), bdev_md.bdev, NULL);
     printk("%s: waiting the pending threads (%ld)...", MODNAME, bdev_md.bdev_usage);
     wait_event_interruptible(umount_queue, bdev_md.bdev_usage == 0);
     
