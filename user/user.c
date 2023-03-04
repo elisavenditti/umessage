@@ -89,7 +89,10 @@ void put_data(void) {
 	printf("\n*Message (up to %ld bytes): ", DATA_SIZE);
 	get_input(DATA_SIZE, input);
 
-	ret = syscall(PUT, input, strlen(input));
+	do {
+		ret = syscall(PUT, input, strlen(input));
+	} while (errno == EAGAIN);
+
 	print_puterror(ret);
 	printf("\n\nPress enter to exit: ");
 	while (getchar() != '\n');
@@ -109,7 +112,10 @@ void invalidate_data(void) {
 	get_input(NUM_DIGITS(NBLOCKS)+1, input);
 	offset = strtol(input, NULL, 10);
 
-	ret = syscall(INVALIDATE, offset);
+	do{
+		ret = syscall(INVALIDATE, offset);
+	} while (errno == EAGAIN);
+	
 	print_invalidateerror(ret, offset);
 
 	printf("\n\nPress enter to exit: ");
@@ -118,6 +124,8 @@ void invalidate_data(void) {
 
 			
 }
+
+
 
 void* multiple_put(void* arg){
 	
@@ -129,11 +137,18 @@ void* multiple_put(void* arg){
 	for(i=0; i<NREQUESTS; i++){
 		if(i==NREQUESTS/2) sleep(12);
 		sprintf(str, "%d", i);
-		ret = syscall(PUT, str, strlen(str));
+		
+		do {
+			ret = syscall(PUT, str, strlen(str));
+		} while (errno == EAGAIN);
+		
 		print_puterror(ret);
 	}
 	pthread_exit(NULL);
 }
+
+
+
 
 void* multiple_get(void* arg){
 	
@@ -151,6 +166,9 @@ void* multiple_get(void* arg){
 	pthread_exit(NULL);
 }
 
+
+
+
 void* multiple_invalidate(void* arg){
 	
 	int i, ret;
@@ -158,12 +176,19 @@ void* multiple_invalidate(void* arg){
 	pthread_barrier_wait(&barrier);
 	
 	for(i=0; i<NREQUESTS; i++){
-		ret = syscall(INVALIDATE, i%NBLOCKS);
+		do{
+			ret = syscall(INVALIDATE, i%NBLOCKS);
+		} while (errno == EAGAIN);
+		
 		print_invalidateerror(ret, i%NBLOCKS);
 	}
 
 	pthread_exit(NULL);
 }
+
+
+
+
 
 
 int main(int argc, char** argv){

@@ -35,7 +35,7 @@ char* testo[] = {
 
 
 char homepage[] = {"\033[2J\033[H  \
-		\n\n\n*********************************************************************************** \
+		\n\n\n******************************************************************************** \
 		\n\tUSER-MESSAGE SERVICE | HOW CAN I HELP YOU?\n\n\
 		\t1) PUT DATA 		- Write message in a free block\n\
 		\t2) GET DATA		- Retrieve message in a block\n\
@@ -44,7 +44,7 @@ char homepage[] = {"\033[2J\033[H  \
 		\t5) UMOUNT FILESYSTEM\n\
 		\t6) N REQUESTS TEST\n\
 		\t7) Exit\n\
-		\n***********************************************************************************\n"};
+		\n********************************************************************************\n"};
 
 #define print_geterror(ret, offset, destination) \
     if (ret >= 0) { \

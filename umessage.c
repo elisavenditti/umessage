@@ -24,7 +24,6 @@
 #include "lib/include/scth.h"
 #include "umessage_header.h"
 #include "umessage_device_driver.c"
-#include "umessage_syscalls.c"
 #include "umessage_filesystem/umessagefs_src.c"
 
 

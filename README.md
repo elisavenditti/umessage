@@ -1,9 +1,8 @@
 INIZIALIZZAZIONE DEL SERVIZIO DI MESSAGGISTICA
 
 Modulo per la ricerca della syscall table
+- sudo insmod the_usctm.ko
 
-1) make all                                 ho eliminato l'inserimento automatico di una syscall
-2) sudo insmod the_usctm.ko
 
 CONFIGURAZIONE
 * configurare nel makefile il numero di blocchi di dati da inserire nell'immagine (sb e inode esclusi)
@@ -15,6 +14,7 @@ CONFIGURAZIONE
 * se si vuole rendere persistente il contenuto dei blocchi bisogna eliminare i primi due comandi nel make file (create-fs). Questi due comandi
   vanno eseguiti solo durante la prima creazione
 * in user_hdr.h e in umessage_header.h definire PATH_TO_IMAGE con il path per il file immagine
+
 
 Modulo sviluppato
 

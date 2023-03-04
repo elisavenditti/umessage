@@ -1,29 +1,68 @@
 #define EXPORT_SYMTAB
-#include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/fs.h>
-#include <linux/sched.h>	
-#include <linux/pid.h>		         /* For pid types */
-#include <linux/tty.h>		         /* For the tty declarations */
-#include <linux/version.h>	         /* For LINUX_VERSION_CODE */
+#include <linux/cdev.h>
+#include <linux/errno.h>
+#include <linux/device.h>
+#include <linux/kprobes.h>
+#include <linux/mutex.h>
+#include <linux/mm.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/version.h>
+#include <linux/interrupt.h>
+#include <linux/time.h>
+#include <linux/string.h>
+#include <linux/vmalloc.h>
+#include <asm/page.h>
+#include <asm/cacheflush.h>
+#include <asm/apic.h>
+#include <asm/io.h>
+#include <linux/syscalls.h>
+
+#include <linux/pid.h>
+#include <linux/tty.h>
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
-#include <linux/ioctl.h>
 #include <linux/delay.h>            // inclusion for testing
+
+
+
 
 
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
 static ssize_t dev_read (struct file *, char *, size_t, loff_t *);
+
+
+
+// DEFINIZIONI UTILI
+
+unsigned long the_ni_syscall;
+unsigned long new_sys_call_array[] = {0x0,0x0,0x0}; //to initialize at startup
+
+#define HACKED_ENTRIES (int)(sizeof(new_sys_call_array)/sizeof(unsigned long))
+int restore[HACKED_ENTRIES] = {[0 ... (HACKED_ENTRIES-1)] -1};
+
 DECLARE_WAIT_QUEUE_HEAD(wqueue);
 
 
 
-int dev_put_data(char* source, size_t size){
-   
-   int i;
-   int ret;
+
+
+// PUT_DATA SYSCALL - insert size byte of the source in a free block
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+__SYSCALL_DEFINEx(2, _put_data, char*, source, size_t, size){
+#else
+asmlinkage int sys_put_data(char* source, size_t size){
+#endif
+
+	
+   char* message;
+   int i, ret, len;
    int block_to_write;
    struct block_node *cas;
    struct block_node *tail;
@@ -34,15 +73,33 @@ int dev_put_data(char* source, size_t size){
    struct block_device *temp;
    
    printk("%s: DEVICE DRIVER - PUT DATA\n", MODNAME);
+   if(size >= DATA_SIZE) return -EINVAL;
+	
+   
+   // dynamic allocation of area to contain the message to write
+	message = kzalloc(DATA_SIZE, GFP_KERNEL);
+   if (!message){
+    	printk("%s: kmalloc error, unable to allocate memory for receiving buffer in ioctl\n\n",MODNAME);
+      return -ENOMEM;
+   }
+
+
+	// copy size bytes from user to kernel buffer
+   ret = copy_from_user(message, source, size);
+	len = strlen(message);
+	if(len<size) size = len;
+   message[size] = '\0';
+   AUDIT	printk(KERN_INFO "%s: message to put is %s (len - %lu)\n", MODNAME, message, size+1);
+	
+
 
    // signal the presence of reader on bdev variable
    __sync_fetch_and_add(&(bdev_md.bdev_usage),1);            
    temp = bdev_md.bdev;
    if(temp == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
-      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
-      wake_up_interruptible(&umount_queue);
-      return -ENODEV;
+      ret = -ENODEV;
+      goto put_exit;
    }
 
 
@@ -63,6 +120,8 @@ int dev_put_data(char* source, size_t size){
       goto put_exit;
    }
    AUDIT printk(KERN_INFO "%s: the invalid block is the number %d\n", MODNAME, selected_block->num);
+
+
 
 
    // BLOCK VALIDATION – another writer could select this block and attempt to validate it.
@@ -89,13 +148,15 @@ int dev_put_data(char* source, size_t size){
       goto put_exit;
    }
    
+
    // UPDATE DATA: the concurrent insertions on this block stopped on previous CAS so this is the only writer on bh->b_data
    if (bh->b_data != NULL){ 
-      strncpy(bh->b_data, source, DATA_SIZE);  
+      strncpy(bh->b_data, message, DATA_SIZE);  
       mark_buffer_dirty(bh);
    }
    
    
+
    // get the tail of the valid blocks
    tail = valid_messages;
    while(get_pointer(tail->val_next) != change_validity(NULL)){       // the tail has next pointer NULL but VALID
@@ -112,10 +173,11 @@ int dev_put_data(char* source, size_t size){
    AUDIT printk(KERN_INFO "%s: the tail is at block %d\n", MODNAME, tail->num);
 
 
+
+
    // INSERT THE NODE in the valid list. Exchange the tail's next field (valid NULL) with the pointer
    // to the new element. Interferences are detected: the tail's next field has the validity bit included
    cas = __sync_val_compare_and_swap(&(tail->val_next), change_validity(NULL), selected_block);
-   
    
    if(cas != change_validity(NULL)){
       // FAILURE - new value returned
@@ -130,7 +192,7 @@ int dev_put_data(char* source, size_t size){
    AUDIT printk(KERN_INFO "%s: CAS succeded - tail.next = %px, &inserted_block = %px\n", MODNAME, tail->val_next, selected_block);
    
    
-#ifdef FORCE_SYNC
+#ifdef FORCE_SYNC 
       // force the synchronous write on the device
       if(sync_dirty_buffer(bh) == 0){
          AUDIT printk(KERN_INFO "%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
@@ -153,8 +215,7 @@ int dev_put_data(char* source, size_t size){
 put_exit:   
    __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
    wake_up_interruptible(&umount_queue);
-
-
+   kfree(message);
    return ret;
 
 }
@@ -162,9 +223,15 @@ put_exit:
 
 
 
-// GET DATA
 
-int dev_get_data(int offset, char * destination, size_t size){
+
+// GET_DATA SYSCALL - get size bytes from the block at the specified offset
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+__SYSCALL_DEFINEx(3, _get_data, int, offset, char*, destination, size_t, size){
+#else
+asmlinkage int sys_get_data(int offset, char* destination, size_t size){
+#endif
 
    int ret;
 	int index;
@@ -178,7 +245,14 @@ int dev_get_data(int offset, char * destination, size_t size){
 	
 
    printk("%s: DEVICE DRIVER - GET DATA\n", MODNAME);
-   __sync_fetch_and_add(&(bdev_md.bdev_usage),1);            // signal the presence of reader on bdev variable
+
+   if(size > DATA_SIZE) size = DATA_SIZE;
+	else if(size < 0 || offset>NBLOCKS || offset<0) return -EINVAL;
+   AUDIT printk(KERN_INFO "%s: the destination buffer is at %px; getting %lu bytes of block %d\n", MODNAME, destination, size, offset);
+
+
+   // signal the presence of reader on bdev variable
+   __sync_fetch_and_add(&(bdev_md.bdev_usage),1);            
    temp = bdev_md.bdev;
    if(temp == NULL){
       printk("%s: NO DEVICE MOUNTED", MODNAME);
@@ -237,21 +311,34 @@ get_exit:
 
 
 
-int dev_invalidate_data(int offset){
 
-   int ret;
+
+// INVALIDATE_DATA SYSCALL - invalidate the block at specified offset
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+__SYSCALL_DEFINEx(1, _invalidate_data, int, offset){
+#else
+asmlinkage int sys_invalidate_data(int offset){
+#endif
+
+   int ret, index;
    struct block_node *cas;
+   struct block_device *temp;
    struct block_node *selected;
    struct block_node *predecessor;
-
+   
 	unsigned long last_epoch;
 	unsigned long updated_epoch;
 	unsigned long grace_period_threads;
-   struct block_device *temp; 
-	int index;
+    
+
 
    printk("%s: DEVICE DRIVER - INVALIDATE DATA\n", MODNAME);
+   if (offset>NBLOCKS || offset<0) return -EINVAL;
+   AUDIT printk(KERN_INFO "%s: block to invalidate is: %d\n", MODNAME, offset);
+
    
+   // signal the presence of reader on bdev variable
    __sync_fetch_and_add(&(bdev_md.bdev_usage),1);
    temp = bdev_md.bdev;
    if(temp == NULL){
@@ -273,6 +360,7 @@ int dev_invalidate_data(int offset){
    ret = 0;
    selected = valid_messages;
    predecessor = valid_messages;
+
    
    // get the block to invalidate
    while(get_pointer(selected->val_next) != change_validity(NULL)){
@@ -293,6 +381,7 @@ int dev_invalidate_data(int offset){
    }
 
 
+
    // get the predecessor (N-1) of the block to invalidate (N) - no concurrency here
    while(get_pointer(predecessor->val_next) != &block_metadata[offset]){
    
@@ -307,11 +396,11 @@ int dev_invalidate_data(int offset){
  
 
 
+
    // DELETE THE ELEMENT from valid list
    // get_pointer function validate in every case the predecessor: the CAS wants to find the predecessor in a valid state
    cas = __sync_val_compare_and_swap(&(predecessor->val_next), get_pointer(predecessor->val_next), get_pointer(selected->val_next));
    
-
    if(cas == change_validity(selected->val_next)){
       // FAILURE - new value returned
       printk("%s: CAS failed - found value: %px - expected value: %px\n", MODNAME, predecessor->val_next, get_pointer(selected->val_next));
@@ -322,6 +411,7 @@ int dev_invalidate_data(int offset){
    // SUCCESS - old value returned
    AUDIT printk(KERN_INFO "%s: CAS succeded - prev.next = %px - invalidated.next = %px\n", MODNAME, predecessor->val_next, selected->val_next);
       
+
       
    // MOVE to a new epoch
    updated_epoch = (rcu.next_epoch_index) ? MASK : 0;
@@ -344,6 +434,7 @@ int dev_invalidate_data(int offset){
    AUDIT printk(KERN_INFO "%s: invalidation completed! Now selected block has val_next %px\n", MODNAME, selected->val_next);
 
 
+
 inv_end: 
    mutex_unlock(&(rcu.lock)); 
    __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
@@ -354,11 +445,12 @@ inv_end:
 
 
 
+
 // READ - FILE OPERATION
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
 
-
+   int i;
    char* data;
    char* temp_buf;
    char temp[] = "";
@@ -372,14 +464,18 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    struct buffer_head *bh = NULL;
    struct block_device *temp_bdev;
    int ret, index, lenght, copied;
-   int i=0;
+   
    
 
    if(*off != 0) return 0;
    copied = 0;
+   i = 0;
+
+
    
    printk(KERN_INFO "%s: READ FILE (maj,min) = (%d,%d)\n", MODNAME, major, minor);
    
+   // signal the presence of reader on bdev variable
    __sync_fetch_and_add(&(bdev_md.bdev_usage),1);
    temp_bdev = bdev_md.bdev;
    if(temp_bdev == NULL){
@@ -391,9 +487,10 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    
 
    // signal the presence of reader 
-   AUDIT printk(KERN_INFO "old ctr: %ld\n", (rcu.epoch) & (~MASK));
+   AUDIT printk(KERN_INFO "%s: old ctr: %ld\n", MODNAME, (rcu.epoch) & (~MASK));
    my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
-   AUDIT printk(KERN_INFO "new ctr: %ld\n", (rcu.epoch) & (~MASK));
+   AUDIT printk(KERN_INFO "%s: new ctr: %ld\n", MODNAME, (rcu.epoch) & (~MASK));
+
 
    // check if the valid list is empty
    if(get_pointer(valid_messages->val_next) == change_validity(NULL)){
@@ -405,7 +502,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    next = get_pointer(valid_messages->val_next);
 
 
-   // iterate on the blocks until the next is NULL
+
+
+   // ITERATE ON THE BLOCKS UNTIL THE NEXT IS NULL
    while(next != change_validity(NULL)){      
       
       curr = next;
@@ -422,7 +521,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          
          data = ((struct bdev_node*) (bh->b_data))->data;
          lenght = strlen(bh->b_data);
-         AUDIT printk(KERN_INFO " data: %s of len: %d\n", bh->b_data, lenght);
+         AUDIT printk(KERN_INFO "%s: data: %s of len: %d\n", MODNAME, bh->b_data, lenght);
 
 
          // allocate and use the temp buffer in order to modify 
@@ -447,6 +546,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       next = get_pointer(curr->val_next);    // READ ACCESS to next block      
       
       i++;
+
 #ifdef TEST
       if(i==2){
          printk("10 seconds sleep\n");
@@ -454,6 +554,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          printk("i'm awake\n");
       }
 #endif
+
    }
 
    temp[0] = '\0';
@@ -462,16 +563,20 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    ret = len;
    kfree(temp_buf);
    
-read_end:   
+
+
+read_end:  
+
    index = (my_epoch & MASK) ? 1 : 0;           
-	AUDIT printk(KERN_INFO "reset ctr index %d (before): %ld\n", index, rcu.pending[index]);
+	
+   AUDIT printk(KERN_INFO "%s: reset ctr index %d (before): %ld\n", MODNAME, index, rcu.pending[index]);
    __sync_fetch_and_add(&(rcu.pending[index]),1);
-   AUDIT printk(KERN_INFO "reset ctr index %d (after): %ld\n", index, rcu.pending[index]);
+   AUDIT printk(KERN_INFO "%s: reset ctr index %d (after): %ld\n", MODNAME, index, rcu.pending[index]);
    wake_up_interruptible(&wqueue);
+   
    __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
    wake_up_interruptible(&umount_queue);
 
-   
    *off = *off + copied;
    return ret;
    
@@ -496,7 +601,6 @@ static int dev_open(struct inode *inode, struct file *file) {
       return -EROFS;
    }
 
-
    return 0;
 }
 
@@ -518,6 +622,16 @@ static int dev_release(struct inode *inode, struct file *file) {
 }
 
 
+
+
+// dopo le macro vengono create due funzioni con nomi differenti da sys_...
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+long sys_invalidate_data = (unsigned long) __x64_sys_invalidate_data;       
+long sys_put_data = (unsigned long) __x64_sys_put_data;
+long sys_get_data = (unsigned long) __x64_sys_get_data;
+#else
+#endif
 
 
 
