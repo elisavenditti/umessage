@@ -412,7 +412,8 @@ asmlinkage int sys_invalidate_data(int offset){
    AUDIT printk(KERN_INFO "%s: CAS succeded - prev.next = %px - invalidated.next = %px\n", MODNAME, predecessor->val_next, selected->val_next);
       
 
-      
+   
+   
    // MOVE to a new epoch
    updated_epoch = (rcu.next_epoch_index) ? MASK : 0;
    rcu.next_epoch_index += 1;
