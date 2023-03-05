@@ -261,6 +261,9 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
       return -ENODEV;
    }
 
+   // signal the presence of reader - avoid that a writer reuses this block while i'm reading
+	my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
+
    // get metadata of the block   
    selected_block = &block_metadata[offset];
 
@@ -270,9 +273,6 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
       wake_up_interruptible(&umount_queue);
       return -ENODATA;
    }
-
-   // signal the presence of reader - avoid that a writer reuses this block while i'm reading
-	my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
 
 
    // get cached data
