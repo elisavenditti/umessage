@@ -76,11 +76,6 @@ extern struct counter rcu;
 extern struct bdev_metadata bdev_md;
 
 
-// VFS NON-SUPPORTED FEATURES OF DEVICE DRIVER 
-int dev_put_data(char *, size_t);
-int dev_invalidate_data(int);
-int dev_get_data(int, char *, size_t);
-
 
 // KERNEL VAL_NEXT UTILS
 #define MASK 0x8000000000000000

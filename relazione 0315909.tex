@@ -3,17 +3,57 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{geometry}
+\usepackage{xcolor}
+\usepackage[italian]{babel}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+\usepackage{titling}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codeorange}{rgb}{0.7,0,0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.96}
+\lstdefinestyle{mystyle}{
+	backgroundcolor = \color{backcolour},
+	commentstyle = \color{codegray},
+	keywordstyle= \color{codeorange},
+	numberstyle = \tiny\color{codegray},
+	stringstyle= \color{codegreen},
+	basicstyle =\ttfamily\footnotesize,
+	breakatwhitespace=false,	
+	breaklines=true,
+	captionpos=b,
+	keepspaces=true,
+	numbersep=5pt,
+	showspaces=false,
+	showstringspaces=false,
+	showtabs=false,
+	tabsize=2,
+	xleftmargin=10pt,
+}
+\lstset{style=mystyle} 
+
 \geometry{a4paper, top=3cm, left=3.5cm, right=3.5cm, heightrounded, bindingoffset=5mm}
 \pagestyle{plain}
 
-\title{Relazione progetto Sistemi Operativi Avanzati}
-\author{Elisa Venditti}
-\date{}
+\title{DEVICE DRIVER PER LA GESTIONE \\ DI MESSAGGI UTENTE\\ \bigskip \small{Sistemi Operativi Avanzati} \\Università degli studi di Roma Tor Vergata\\ \bigskip}
 
+\author{Elisa Venditti\\ matricola 0315909 \bigskip}
+\date{A.A 2022/23}
+
+\vspace{2cm} % Aggiunge uno spazio verticale di 2 cm
+%\pretitle{\begin{center}\LARGE}
+%\posttitle{\par\end{center}\vskip 0.5em}
+
+%\preauthor{\begin{center}\large}
+%\postauthor{\par\end{center}}
+%\newcommand{\subtitle}[1]{%
+%  \posttitle{\begin{center}\large#1\end{center}}%
+%}
 \begin{document}
-	\begin{titlepage}	
+	%\begin{titlepage}	
 		\maketitle
-	\end{titlepage}
+	%\end{titlepage}
 
 	%inserisco l'indice in pagine numerate con i numeri romani
 	\frontmatter
@@ -22,114 +62,346 @@
 
 	%CAPITOLO 1
 	\chapter{Struttura generale}
-	Questo è il primo capitolo: spiega l'architettura del sistema. Il driver esporta delle system calls non supportate dal VFS:
+	Il progetto prevede la realizzazione di un device driver per la gestione a livello di blocco di messaggi utente.  Le funzionalità offerte dal driver devono essere in parte supportate dal VFS (in modo da accedere al device come se fosse un file) e in parte non supportate dal VFS. Queste ultime riguardano le operazioni di inserimento, lettura ed eliminazione di blocchi del device. Tutte le funzionalità sono state accorpate in un modulo del kernel Linux. Il software di inizializzazione del modulo, quindi, si occupa di registrare:
+\begin{itemize}
+		\item le system calls;
+		\item le file operations;
+		\item il file system
+\end{itemize}
+oltre ad eseguire l'inizializzazione di strutture dati per la gestione dei messaggi (vedere \ref{sec:strutturekernel}).
+	\section{Device driver}
+	Il driver permette l'accesso al dispositivo tramite file operations e system calls. Altri driver nel kernel di Linux scelgono di aggiungere delle chiamate di sistema alla loro interfaccia per esporre funzionalità, ad esempio il generatore di numeri randomici:\\ https://github.com/torvalds/linux/blob/master/drivers/char/random.c. \\
+	\par Ho scelto di procedere in questo modo perché alcune funzionalità da implementare non devono essere supportate dal VFS: non deve esistere un'interfaccia come \emph{write} o \emph{ioctl} per operare sui blocchi. Se esistesse, la system call si limiterebbe a richiamarne le funzionalità utilizzando il VFS, così come avrebbe potuto fare un utente. Con la soluzione proposta, le system calls sono davvero l'\emph{unico} punto di accesso per svolgere le funzionalità richieste sul device. Le system calls implementate sono:
 	\begin{itemize}
-		\item get\_data
-		\item put\_data
-		\item invalidate\_data
+		\item get\_data - legge un certo numero di byte del messaggio relativo al blocco specificato;
+		\item put\_data - inserisce un messaggio in un blocco libero;
+		\item invalidate\_data - elimina logicamente un messaggio (lo rende disponibile per sovrascritture).
 	\end{itemize}
-	e delle system call del VFS. Infatti definisce le seguenti file operations che permettono al codice del driver di essere richiamato da syscall del VFS:
+	Nella loro implementazione, le syscall utilizzano il sottosistema \emph{buffer-page chache} del VFS (tramite \emph{sb\_bread}) per poter agire sui blocchi memorizzati sul block device.\\
+	\par Il driver fornisce anche delle file operations che permettono al codice specifico di essere richiamato da syscall del VFS:
 	\begin{itemize}
-		\item dev\_open
-		\item dev\_release
-		\item dev\_read
+		\item dev\_open;
+		\item dev\_release;
+		\item dev\_read.
 	\end{itemize}
 	
-	Le system call supportate dal VFS sono delle file operations ... Le altre funzionalità da implementare lavorano a livello di blocco, accedono al block device tramite la cache ... non possono utilizzare le file operations perchè non lavorano a livello di file. Dunque, per essere chiamate dall'utente, le devo registrare come system call.
-
+	
 	\section{Filesystem}
-	Parlo del singlefilefs che usa il driver in modo da essere visto come un file in un filesystem. Parlo delle variabili utilizzate per sincronizzare (mount unico ad esempio). Faccio le considerazioni sulla cache; parlo del blkget per capire su quale device sono (e spiego perchè ho usato questo metodo); parlo della mount con il  loop device. 
-	
+	Il file system è necessario per poter accedere al contenuto del device come se fosse un file. Viene gestito un unico file, dunque il codice presenta delle semplificazioni nell'inizializzazione delle strutture dati. Ad esempio, non sono state implementate le super operations e non è stato inserito/gestito il vettore di i-nodes. Per formattare correttamente il dispositivo con un file system viene utilizzato il codice utente presente in \emph{mkfs\_umessage.c}.\\
+	\par Durante la fase di lookup, le file operations esportate dal driver sono state associate all'inode del file: in questo modo, il file ci permette di accedere al dispositivo tramite le funzionalità del driver, come esplicitato nella traccia. Non essendo richiesta nessuna file operation di scrittura per modificare il contenuto del device, il file è stato reso read-only. Infatti nella \emph{dev\_open}, è presente il seguente controllo:\\
+\begin{lstlisting}[language=C]
+   if(file->f_mode & FMODE_WRITE){
+      printk("%s: FORBIDDEN WRITE", MODNAME);
+      return -EROFS;
+   }
+\end{lstlisting}
+
+\bigskip
+\bigskip
+	Il montaggio del file system viene effettuato con il loop device che permette di vedere il file immagine (adeguatamente formattato) come se fosse un dispositivo a blocchi. Una volta effettuato il montaggio la funzione \emph{singlefilefs\_mount} controlla:
+\begin{enumerate}
+	\item la dimensione del device - il driver è in grado di supportare un massimo numero di blocchi che è possibile specificare definendo il parametro MAXBLOCKS. La dimensione del file immagine viene calcolata nel seguente modo:
+\begin{lstlisting}[language=C]
+	filp = filp_open(PATH_TO_IMAGE, O_RDONLY, 0);
+	// ricavo la dimensione totale del file
+	size = vfs_llseek(filp, 0, SEEK_END);
+	// ricavo il numero di blocchi di dati
+	num_blocks = (size / DEFAULT_BLOCK_SIZE) -2;        
+\end{lstlisting}
+	\item la presenza di altri montaggi - il driver supporta un solo montaggio. Dunque, nel modulo del kernel è presente un intero che viene impostato atomicamente a 1 durante il montaggio e resettato a 0 quando il file system viene smontato.\\
+\end{enumerate}
+
+Passati i controlli e completata la \emph{fill} del superblocco, viene ricavata la struttura \emph{block\_device}. Quest'ultima corrisponde al block device utilizzato dal file system ed è necessaria per ricavare il superblocco. Le file operations chiamate sull'unico file del filesystem, possono accedere al superblocco tramite il puntatore alla sessione ricevuto in input. Tuttavia, le syscall non sono file operations e hanno bisogno di un altro meccanismo per poter leggere i blocchi corretti dal \emph{buffer-page cache}:\\
+\begin{lstlisting}[language=C]
+	struct buffer_head bh = (struct buffer_head *) sb_bread (bdev->bd_super, block_to_read);  
+\end{lstlisting}
+
+\bigskip
+Infine, viene costruita una rappresentazione in memoria del contenuto del dispositivo utilizzando i metadati (approfonditi in \ref{sec:metadati}).\\
+
+	\section{Relazione tra filesystem e device driver}
+	Le operazioni sul driver devono andare a buon fine solo se è stato montato un file system. Per eseguire questo controllo, tali operazioni verificano che la variabile bdev sia non nulla: bdev verrà resettata a NULL dall'operazione di umount. In questo contesto, però, bisogna prestare attenzione all'interleaving tra le operazioni, perchè potrebbero presentarsi le seguenti situazioni:
+\begin{itemize}
+		\item \emph{put\_data}, ad esempio, legge bdev, controlla che sia diverso da NULL e viene deschedulato. Prima che possa continuare, viene eseguita una umount che riporta bdev a NULL. La umount riconosce il  target "busy" solo quando è impegnato da file operations. Dunque, serve un meccanismo per comunicare alla mount che c'è un'operazione pendente: uno \emph{usage counter}.  
+		\item consideriamo la stessa situazione del punto precedente. Con il contatore si evita lo smontaggio, però il puntatore bdev viene comunque impostato a NULL (in modo da bloccare richieste successive). C'è bisogno, dunque, di una variabile temporanea che memorizzi il puntatore letto per poter operare.
+\end{itemize}
+
+\begin{lstlisting}[language=C]
+	// incrementa atomicamente bdev_usage di 1            
+	temp = bdev
+	if(temp == NULL){
+		// decrementa atomicamente bdev_usage
+		return
+	}
+	// ...
+	bh = (struct buffer_head *) sb_bread(temp->bd_super, block_to_read);
+\end{lstlisting}
+
+\bigskip Durante lo smontaggio, bdev è riportato atomicamente a NULL; poi si attende su una wait queue il rilascio del contatore da parte di tutti i thread.
+
+
+
+	\section{Cache}
+	Le strutture dati strettamente correlate sono state racchiuse in una stessa struttura e allineate alla linea di cache. Ne sono un esempio le variabili introdotte nella sezione precedente: bdev (che indica il block device utilizzato dal file system) e bdev\_usage (che indica lo usage counter della variabile bdev) vengono utilizzate sempre insieme, sia dalle funzioni di mount e umount, sia dalle operazioni del device driver. Lo stesso ragionamento è stato seguito per altre strutture dati.
+
+
+
+
 
 
 
 
 	%CAPITOLO 2
 	\chapter{Gestione dei messaggi utente}
-	Questo è il secondo capitolo
 	
-	\section{Layout del blocco}
-	Parlo dei metadati ... come strutturo il blocco, a cosa servono i metadati e come/dove li rendo persistenti	
+	\section{Layout del blocco}\label{sec:metadati}
+
+	Il blocco sul dispositivo ha una dimensione di 4KB: 32 bit sono metadati; i restanti contengono i messaggi utente. I bit per i metadati sono divisi in:
+\begin{itemize}
+		\item 1 bit di validità - indica se il blocco è valido oppure se è stato eliminato logicamente;
+		\item 31 bit per indicare il numero del prossimo blocco - è necessario per dare un ordinamento temporale ai messaggi che vengono inseriti.
+\end{itemize}
+I metadati  nel dispositivo vengono aggiornati solo durante il montaggio e lo smontaggio del file system: servono per rendere persistente lo stato attuale dei messaggi. Questo rende più snella la gestione delle scritture sulla cache: l'inserimento deve riportare solo i dati, l'invalidazione non deve operare sulla cache. Quando il file system è montato, esistono strutture dati nel kernel per la gestione dei messaggi utente (vedere \ref{sec:strutturekernel}).\\
+
+\par Durante il montaggio, viene eseguita una scansione per inizializzare le strutture dati nel kernel e per trovare l'\emph{head} (unico elemento valido per cui non è stato trovato il predecessore) da cui partire per la lettura. L'operazione duale viene eseguita durante lo smontaggio.
+
+
+
 	
-	\section{Strutture del kernel}
-	Parlo delle strutture nel kernel: block\_node(?), valid list e block\_metadata. La presenza nella valid list indica la validità del blocco. Spiega le macro utilizzate ecc ...
+	\section{Strutture del kernel}\label{sec:strutturekernel}
+	Come accennato in precedenza, la gestione a livello di blocco dei messaggi utente viene effettuata dal kernel tramite delle strutture dati:
 
-	\section{Sincronizzazione con RCU}
-	Parlo in generale di tutti i meccanismi: write lock per chi invalida, chi scrive non si blocca ma attua un approccio all-or-nothing (riferimento alla sottosezione di giù). Inoltre parla del contatore RCU innalzato dai lettori che permette di attendere l'assenza di lettori prima di \emph{riutilizzare} un'area.
+\begin{itemize}
+		\item \emph{struct block\_node} - metadati di gestione mantenuti dal kernel. La struttura è definita come segue:
+\begin{lstlisting}[language=C]
+	struct block_node {
+		struct block_node *val_next;
+		int num; 	
+	};
+\end{lstlisting}
+L'intero \emph{num} indica il numero di blocco a cui si riferisce la struttura. Come si nota dalla presenza di \emph{val\_next}, le strutture \emph{block\_node} verranno collegate e ordinate tramite una lista. È su questa lista che andranno ad agire le operazioni del device driver. Il puntatore \emph{val\_next} non può utilizzare il bit più a sinistra perché questo indica la validità del blocco. Sapere se un blocco è valido o no è necessario per eseguire alcune operazioni di \emph{compare-and-swap}.  Ho introdotto alcune macro che agiscono su \emph{val\_next} per: (1) ricavare il puntatore; (2) ricavare il bit di validità; (3) invertire la validità del blocco. Tali macro funzionano sui puntatori validi non nulli, dunque è stata prestata particolare attenzione per l'ultimo elemento della lista (con \emph{val\_next}= VALID\_NULL).
 
-	\subsection{read}
-	Pseudocodice della \emph{read} + considerazioni sul perchè va bene per le richieste del prof.
+		\item \emph{struct block\_node *valid\_messages} - lista di elementi validi. Possono esistere elementi validi che non sono presenti su questa lista: è una temporanea inconsistenza dovuta all'invalidazione. Pertanto, solo i blocchi in questa lista vengono considerati come effettivamente validi. Per evitare la gestione della lista vuota è stata inserita una \emph{head} permanente con \emph{head->num} = -1.
+
+		\item \emph{struct block\_node block\_metadata[MAXBLOXKS]} - array che memorizza tutti i blocchi (anche invalidi) ordinati con il campo \emph{num}.
+\end{itemize}
+
+
+
+
+
+
+	\section{Sincronizzazione}
+	Per sincronizzare i thread che operano sulle strutture della sezione \ref{sec:strutturekernel} è stato seguito l'approccio RCU. I lettori non attendono le scritture, mentre le invalidazioni vengono sequenzializzate tramite l'uso di lock in scrittura. Infine, gli inserimenti non fanno uso di lock, ma eseguono le operazioni in modo atomico seguendo un approccio all-or-nothing. Se ci sono problemi di consistenza viene ritornato -EAGAIN in modo da far capire al codice utente che l'operazione non è stata portata a termine ma è possibile riprovare.\\
+
+\par Le invalidazioni devono impedire il riuso delle aree di memoria invalidate finchè esistono lettori nel grace period (che hanno segnalato la loro presenza sulla lista ma che non hanno ancora completato). Per realizzare questi meccanismi è stata utilizzata la seguente struttura:
+\begin{lstlisting}[language=C]
+	struct counter{
+		// contatori rilasciati nell'epoca corrente
+		unsigned long pending[2];                  
+		// lettori nell'epoca corrente (bit a sinistra=epoca)
+		unsigned long epoch;                           
+		// indice per accedere a pending[] nella prossima epoca
+		int next_epoch_index;                         
+		// write lock sulla lista
+		struct mutex lock;                                 
+	};
+\end{lstlisting}
+Il contatore viene innalzato dai lettori su \emph{epoch}, e poi viene rilasciato sul campo di \emph{pending} relativo all'epoca corrente. L'invalidazione cambia epoca ed è l'unico thread a poterla modificare (in quanto possiede il write lock). Dopo aver cambiato epoca si mette su una wait queue per attendere che i lettori dell'epoca vecchia abbiano rilasciato il contatore su \emph{pending}.
+
+ \par Durante l'inizializzazione del modulo viene creato un kernel thread che si occupa di aggiornare l'epoca periodicamente (per evitarne l'overflow).
+
+	\subsection{dev\_read}
+
+\begin{algorithm}
+\caption{read device's content as a file}
+\begin{algorithmic}
+  \If{filesystem is mounted}
+    	\State increment atomically the reader's epoch-counter
+    	\State read access to first block
+	\While{element is not NULL}
+		\State move to the block to read
+		\State read from cache
+		\State read access to the next block
+	\EndWhile
+	\State release atomically the reader's epoch-counter
+  \EndIf
+\end{algorithmic}
+\end{algorithm}
+
+L'accesso in lettura ad un blocco non si rintraccia nella lettura vera e propria dalla cache, ma nel momento in cui si legge il puntatore al \emph{block\_node} corrispondente al prossimo blocco. Quando mi trovo sul blocco N:
+\begin{itemize}
+		\item se il blocco N+1 viene invalidato prima di averne preso il puntatore (accesso in lettura) allora il lettore non ne vedrà il contenuto;
+		\item se il blocco N+1 viene invalidato dopo averne preso il puntatore (accesso in lettura) allora il lettore ne vedrà il contenuto. Questa lettura non tiene conto della validità del blocco: N+1, essendo sganciato dalla lista, non è più valido. Tuttavia, il lettore aveva effettuato l'accesso quando il blocco era valido, perciò deve continuare a vederlo.
+\end{itemize}
+
+
 	\subsection{get\_data}
-	Pseudocodice della \emph{get\_data} + considerazioni sul perchè va bene per le richieste del prof.
+\begin{algorithm}[H]
+\caption{read a block's message}
+\begin{algorithmic}
+  \If{filesystem is mounted}
+    	\State increment atomically the reader's epoch-counter
+	\If{block is valid}
+	    	\State read from cache
+	\EndIf
+	\State release atomically the reader's epoch-counter
+    \EndIf
+\end{algorithmic}
+\end{algorithm}
+
+	Non era richiesto l'uso dei contatori di lettura in quanto \emph{get\_data} non scandisce la lista di elementi validi, ma accede ad un singolo blocco. Tuttavia, il contatore è stato comunque incrementato per avere la sicurezza che il blocco che si vuole leggere non verrà invalidato e riutilizzato (prima che questo lettore completi l'acquisizione del messaggio). Poichè la scrittura sulla cache che inserisce un nuovo messaggio non avviene atomicamente, \emph{get\_data} potrebbe notare inconsistenze nella lettura e ho preferito evitare questo scenario.
+
+
 	\subsection{put\_data}
-	Pseudocodice della \emph{put\_data} + considerazioni sul perchè va bene per le richieste del prof. Ricorda la scrittura sincrona vs asicrona con il kernel daemon.
+
+\begin{algorithm}[H]
+\caption{insert message in a free block}
+\begin{algorithmic}
+  \If{filesystem is mounted}
+    	\State get an invalid block to overwrite
+    	\State validate atomically the block
+    	\State update data in cache
+    	\State get the tail of the valid blocks
+    	\State insert atomically the new element
+    \EndIf
+\end{algorithmic}
+\end{algorithm}
+	L'inserimento avviene in coda alla lista in modo da fornire sempre un ordinamento dei messaggi. Tale system call opera secondo un approccio all-or-nothing: la validazione di un blocco e l'inserimento in coda avvengono atomicamente con delle \emph{compare-and-swap}. In questo modo, si riesce a rilevare qualsiasi inconsistenza e a disfare le operazioni (\emph{undo}).  Le considerazioni sulla concorrenza verrano approfondite nel capitolo \ref{chap:concorrenza}.
+
+\par La scrittura sulla cache viene effettuata con una \emph{strncpy} sul campo \emph{b\_data} della struttura \emph{buffer\_head}. Se viene definita la macro FORCE\_SYNC, l'inserimento si occupa di forzare in modo sincrono la scrittura dalla cache al dispositivo; altrimenti se ne occupa il demone del \emph{buffer-page cache}.
+\begin{lstlisting}[language=C]
+	// update data
+	if (bh->b_data != NULL){ 
+		strncpy(bh->b_data, message, DATA_SIZE);  
+		mark_buffer_dirty(bh);
+	}
+	// force synchronous update
+ #ifdef FORCE_SYNC 
+	if(sync_dirty_buffer(bh) == 0){
+		printk("%s: SUCCESS IN SYNCHRONOUS WRITE", MODNAME);
+	} else
+		printk("%s: FAILURE IN SYNCHRONOUS WRITE", MODNAME);
+ #endif
+\end{lstlisting}
+
+
+
 	\subsection{invalidate\_data}
-	Pseudocodice della \emph{invalidate\_data} + considerazioni sul perchè va bene per le richieste del prof.		
+
+\begin{algorithm}[H]
+\caption{invalidate block}
+\begin{algorithmic}
+  \If{filesystem is mounted}
+    	\State get write lock
+    	\State get the block N to invalidate
+    	\If{block is valid}
+		\State get predecessor P
+		\State change atomically P.next to N.next
+		\State move atomically to a new epoch
+		\State wait pending readers
+		\State invalid N
+	\EndIf
+    	\State release write lock
+    \EndIf
+\end{algorithmic}
+\end{algorithm}
+L'operazione di eliminazione di un blocco si materializza tramite il cambiamento atomico di P.next. Non c'è concorrenza tra le invalidazioni ma possono esistere conflitti con le scritture, che non prendono il lock (capitolo \ref{chap:concorrenza}). Non si opera con la cache perché, come già detto, i metadati nel device vengono aggiornati solo durante lo smontaggio del file system. 
 		
 
 
 
 
 	%CAPITOLO 3
-	\chapter{Considerazioni sulla concorrenza}
-	Questo è il terzo capitolo: spiega chi si intralcia.
+	\chapter{Considerazioni sulla concorrenza}\label{chap:concorrenza}
+	È importante considerare i possibili scenari di concorrenza in quanto gli scrittori non si comportano nello stesso modo: le invalidazioni si sincronizzano tra di loro con i lock, ma gli inserimenti procedono senza utilizzare lock e possono andare in conflitto con altri inserimenti o con le invalidazioni. Tutti gli scenari presentati di seguito sono stati testati.
+
 	
 	\section{Inserimento}
-	Parlo nello specifico di tutte le problematiche che affronta il mio codice. Magari in forma tabellare.
+	Nei prossimi esempi ci si riferisce con T1 al thread che procede con l'inserimento. T1 deve: prendere un blocco da riutilizzare S, validarlo, selezionare il blocco in coda T e agganciare S a T. Durante questi passaggi può essere deschedulato e interrotto da un thread concorrente T2.
+
+	\subsubsection{Caso 1: seleziono il blocco S e T2 mi interrompe}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{| l p{8cm} |}
+	\hline
+	Operazioni di T2 & Conseguenze \\ [0.5ex]
+	\hline
+	Inserimento che seleziona S & Se T2 riesce a validare S, il campo S.val\_next ha bit di validità a 1: T1 può riconoscerlo quando tenta di validare S \\ [1ex]
+	Invalidazione di S & T2 fallisce perchè S al momento è invalido\\ [1ex]
+	\hline
+\end{tabular}
+\label{table:1}
+\end{table}
+
+\subsubsection{Caso 2: seleziono S, lo valido e T2 mi interrompe}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{| l p{8cm} |}
+	\hline
+	Operazioni di T2 & Conseguenze \\ [0.5ex]
+	\hline
+	Inserimento in T.val\_next & Non causa problemi perché T1 deve ancora cercare T. Inoltre T2 non potrà selezionare il blocco S perché già valido\\ [1ex]
+	Invalidazione di S & T2 non riconosce S come valido perché è scollegato dalla lista dei blocchi validi\\ [1ex]
+	\hline
+\end{tabular}
+\label{table:1}
+\end{table}
+
+\subsubsection{Caso 3: seleziono la coda T e T2 mi interrompe}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{| l p{8cm} |}
+	\hline
+	Operazioni di T2 & Conseguenze \\ [0.5ex]
+	\hline
+	Inserimento in T.val\_next & T2 cambia T.val\_next quindi T1 riconosce la modifica quando tenta di agganciare S \\ [1ex]
+	Invalidazione di T & T2 cambia la validità in T.val\_next e T1 può riconoscere la modifica quando tenta di agganciare S\\ [1ex]
+	\hline
+\end{tabular}
+\label{table:1}
+\end{table}
 
 	\section{Invalidazione}
-	Parlo nello specifico di tutte le problematiche che affronta il mio codice. Magari in forma tabellare.
+	Nei prossimi esempi si analizzano i conflitti possibili durante l'invalidazione. T1 è il thread che tenta di invalidare il blocco N; P è il predecessore di N, e S è il successore. T1 deve: prendere il lock in scrittura, selezionare il blocco N da invalidare, prendere il predecessore P, scambiare P.val\_next con N.val\_next, cambiare l'epoca e attendere i lettori pendenti. Infine deve invalidare il blocco N e rilasciare il lock in scrittura. Durante questi passaggi può essere deschedulato e interrotto da un thread concorrente T2.
+
+	Se il blocco da invalidare non è la coda, T1 può essere interrotto dagli inserimenti senza entrare in conflitto con essi (perché operano sulla coda). Le altre invalidazioni non sono un problema perché c'è il lock in scrittura. Procediamo ad analizzare le invalidazioni della coda.
+
+	\subsubsection{Caso 1: prima di sganciare N, T2 mi interompe}
+	T2 tenta di inserire un blocco in coda e può farlo senza problemi. Andrà ad agire su N.val\_next: è necessario che la compare-and-swap di T1 che andrà a sganciare N prenda il valore più recente di N.val\_next.
+
+	\subsubsection{Caso 2: prima di invalidare N, T2 mi interompe}
+	Potrebbe essere problematico se T2 tentasse di riutilizzare N prima che tutti i lettori abbiano finito di leggere. Questo scenario non può presentarsi perché T1 renderà definitivamente invalido N solo dopo averlo sganciato dalla lista e aver atteso il completamento dei lettori.
+
+
+
+
+
+
 
 
 
 	%CAPITOLO 4
 	\chapter{Codice utente}
-	Questo è il quarto capitolo: spiega come fare il test (hai un txt sul desktop). Dopo questo test il prof è in grado di vedere che la concorrenza funziona.
+	Il codice sviluppato può essere testato (con \emph{user.c}) digitando il codice relativo all'operazione che si vuole eseguire: oltre alle system calls, è possibile montare e smontare il filesystem nella directory corrente. Se viene definita la macro TEST, la lettura di tutti i blocchi validi del device viene ritardata di 10 secondi non appena si accede in lettura al terzo blocco. Questo è utile per simulare la concorrenza naturale che potrebbe presentarsi.
 
-
-
-
-
-
-
-
-
-
-
-
-
-	\section{Comandi per il font}
-	Questa è la prima sezione. 
-	\par Ho generato il rientro iniziale con uno slash par... Ma nella prima riga dopo il titolo non posso farlo. Posso scrivere in \textbf{grassetto}, oppure in \emph{corsivo}; come una \texttt{macchina da scrivere}; o \underline{sottolineato}.
-	\subsection{Comandi per le note}
-	Questa è la prima sottosezione.
-	\par  Voglio inserire una nota per la parola ciao\footnote{ciao è una parola italiana per salutare.}.
-	\subsubsection{Punti elenco}	
-	Dalla sotto-sottosezione in poi non vengono più indicizzate dall'indice. Ecco un elenco dei BTS:
-	\begin{itemize}
-		\item Jungkook
-		\begin{itemize}
-			\item 1 settembre
-			\item 1997
-		\end{itemize}
-		\item Taehyung
-		\begin{enumerate}
-			\item è il mio bias
-			\item è bellissimo
-		\end{enumerate}
-		\item Jimin
-		\item Jhope
-		\item Suga
-		\item Namjoon
-		\item Jin
-	\end{itemize}
-	\paragraph{Primo paragrafo}
-	Questo è un paragrafo. Se vuoi leffere qualcosa sui riferimenti vai a \ref{sec:my_rif}
-	\subparagraph{Primo sottoparagrafo}
-	Primo dovumento in \LaTeX creato lol
-
-	\section{Riferimenti}\label{sec:my_rif}
-	Questa è la seconda sezione e serve per introdurre i riferimenti.
+	\subsubsection{Caso di test}
+\begin{itemize}
+		\item definire la macro TEST;
+		\item su una shell eseguire in ordine: make, make create-fs, sudo make mount-mod, sudo make mount-fs;
+		\item su una seconda shell eseguire il codice utente;
+		\item sulla prima shell avviare la lettura del file \emph{"the-file"} (che ritarderà di 10 secondi);
+		\item prima che la lettura termini, avviare l'opzione 6 sulla shell 2 (con il codice utente). Questo comando farà partire un certo numero di chiamate a tutte le system calls.
+\end{itemize}
+Una volta completate le operazioni, consultare i messaggi del kernel con sudo dmesg.
+\begin{enumerate}
+	\item Lo scrittore che tenta di invalidare il blocco 0, non rilascia il blocco finchè il lettore non ha terminato.
+	\item Uno scrittore che tenta di inserire un messaggio, non trova nessun blocco libero finchè il lettore non termina. Infatti, l'unico invalido è il blocco 0 ma esiste almeno un lettore pendente.
+	\item Quando il lettore termina, continua a vedere il blocco 0 perchè era valido nel momento in cui aveva eseguito l'accesso in lettura. Lo scrittore che stava tentando di invalidare 0, può rilasciare il lock in scrittura e il blocco può essere riutilizzato per un inserimento.
+\end{enumerate}
 	
 	
 	

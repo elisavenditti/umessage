@@ -206,7 +206,7 @@ int main(int argc, char** argv){
 		
 		
 		op1 = strtol(input, NULL, 10);
-		if (op1 > 6){
+		if (op1 > 7){
 			printf("\nerror - incorrect input\n");
 			return -1;
 		}
