@@ -1,9 +1,10 @@
 # INIZIALIZZAZIONE DEL SERVIZIO DI MESSAGGISTICA
 
-Per eseguire correttamente il servizio di messagistica, bisogna inserire il modulo the_ustm.ko (sudo insmod the_usctm.ko): è necessario per la ricerca della syscall table.
+> Per eseguire correttamente il servizio di messagistica, bisogna inserire il modulo the_usctm.ko (sudo insmod the_usctm.ko): è necessario per la ricerca della syscall table.
 
-Prima di compilare, bisogna configurare i seguenti parametri:
-* makefile: scrivere in NBLOCKS il numero di blocchi di dati da inserire nell'immagine (sb e inode esclusi)
+## Prima di compilare
+Bisogna configurare i seguenti parametri:
+* in Makefile: scrivere in NBLOCKS il numero di blocchi di dati da inserire nell'immagine (sb e inode esclusi)
 * in user_hdr.h: 
   1) in NBLOCKS inserire lo stesso valore del punto precedente;
   2) cambiare il PATH_TO_IMAGE con il path corretto per raggiungere il file immagine
@@ -14,15 +15,15 @@ Prima di compilare, bisogna configurare i seguenti parametri:
   4) definire TEST se si vuole eseguire il test con richieste multiple (opzione 6 del codice utente)
   5) cambiare il PATH_TO_IMAGE con il path corretto per raggiungere il file immagine
 
-Se si vuole rendere persistente il contenuto dei blocchi bisogna eliminare i primi due comandi nel make file (create-fs). Questi due comandi vanno eseguiti solo durante la prima creazione perchè servono per la formattazione iniziale del file immagine
 
 
+## Compilazione del modulo
 
-Modulo sviluppato
+1) compilare: 
+        ```make```
+2) formattare il file immagine (block device logico) per ospitare il file system: ```make create-fs```.
+    Se si vuole rendere persistente il contenuto dei blocchi bisogna eliminare i primi due comandi di create-fs nel make file. Questi vanno eseguiti solo durante la prima creazione per formattare il file immagine.
 
-1) make 
-2) make create-fs                           formattazione del block device logico (file)
-3) sudo make mount-mod                      definisce l'implementazione di: syscall, device driver e filesystem
-                                            chiama get_entries per trovare dove installare le syscall implementate, infine le installa
-                                            installa il driver e il filesystem
-4) sudo make mount-fs                       monta il filesystem presente sul block device logico con -o loop
+
+3) inserire il modulo sviluppato con ```sudo make mount-mod```. In questo modo vengono registrati le syscall, il device driver e il filesystem
+4) [_opzionale_] monta il filesystem presente sul block device logico con -o loop: ```sudo make mount-fs```.
