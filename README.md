@@ -1,19 +1,21 @@
-INIZIALIZZAZIONE DEL SERVIZIO DI MESSAGGISTICA
+# INIZIALIZZAZIONE DEL SERVIZIO DI MESSAGGISTICA
 
-Modulo per la ricerca della syscall table
-- sudo insmod the_usctm.ko
+Per eseguire correttamente il servizio di messagistica, bisogna inserire il modulo the_ustm.ko (sudo insmod the_usctm.ko): è necessario per la ricerca della syscall table.
 
+Prima di compilare, bisogna configurare i seguenti parametri:
+* makefile: scrivere in NBLOCKS il numero di blocchi di dati da inserire nell'immagine (sb e inode esclusi)
+* in user_hdr.h: 
+  1) in NBLOCKS inserire lo stesso valore del punto precedente;
+  2) cambiare il PATH_TO_IMAGE con il path corretto per raggiungere il file immagine
+* in umessage_header.h: 
+  1) scrivere in NBLOCKS il numero di blocchi di dati effettivamente inseriti nell'immagine (stesso valore del punto precedente)
+  2) scrivere in MAX_BLOCKS il numero massimo di blocchi gestibili dal device driver
+  3) definire FORCE_SYNC se si vuole che la scrittura sul device sia sincrona
+  4) definire TEST se si vuole eseguire il test con richieste multiple (opzione 6 del codice utente)
+  5) cambiare il PATH_TO_IMAGE con il path corretto per raggiungere il file immagine
 
-CONFIGURAZIONE
-* configurare nel makefile il numero di blocchi di dati da inserire nell'immagine (sb e inode esclusi)
-* in user_hdr.h inserire lo stesso valore del punto precedente in NBLOCKS e cambiare il PATH_TO_IMAGE con il path per raggiungere il file immagine
-* in umessage_header.h: scrivere in NBLOCKS il numero di blocchi di dati effettivamente inseriti nell'immagine (valore del punto precedente)
-                        scrivere in MAX_BLOCKS il numero massimo di blocchi gestibili dal driver
-                        definire FORCE_SYNC se si vuole che la scrittura sul device sia sincrona
-                        definire TEST se si vuole eseguire il test con richieste multiple (opzione 6 del codice utente)
-* se si vuole rendere persistente il contenuto dei blocchi bisogna eliminare i primi due comandi nel make file (create-fs). Questi due comandi
-  vanno eseguiti solo durante la prima creazione
-* in user_hdr.h e in umessage_header.h definire PATH_TO_IMAGE con il path per il file immagine
+Se si vuole rendere persistente il contenuto dei blocchi bisogna eliminare i primi due comandi nel make file (create-fs). Questi due comandi vanno eseguiti solo durante la prima creazione perchè servono per la formattazione iniziale del file immagine
+
 
 
 Modulo sviluppato
