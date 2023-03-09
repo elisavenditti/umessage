@@ -221,7 +221,9 @@ int main(int argc, char** argv){
 			//mount -o loop -t singlefilefs image ./mount/
 			sprintf(mount_command,"mount -o loop -t singlefilefs %s ./", PATH_TO_IMAGE);
 			ret_sys = system(mount_command);
-			printf("outcome: %s\n", strerror(errno));
+	
+			if (ret_sys == 0) printf("success in mounting");
+			else printf("error in mounting");
 			
 			printf("\n\nPress enter to exit: ");
 			while (getchar() != '\n');
@@ -230,7 +232,9 @@ int main(int argc, char** argv){
 			
 			sprintf(mount_command,"umount ./");
 			ret_sys = system(mount_command);
-			printf("outcome: %s\n", strerror(errno));
+			
+			if (ret_sys == 0) printf("success in unmounting");
+			else printf("error in unmounting");
 			
 			printf("\n\nPress enter to exit: ");
 			while (getchar() != '\n');

@@ -185,7 +185,6 @@ asmlinkage int sys_put_data(char* source, size_t size){
       selected_block->val_next = NULL;
       ret = -EAGAIN;
       goto put_exit;
-      return -1;
    }
    
    // SUCCESS - old value returned
@@ -247,7 +246,7 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
    printk("%s: DEVICE DRIVER - GET DATA\n", MODNAME);
 
    if(size > DATA_SIZE) size = DATA_SIZE;
-	else if(size < 0 || offset>NBLOCKS || offset<0) return -EINVAL;
+	if(size < 0 || offset>NBLOCKS || offset<0) return -EINVAL;
    AUDIT printk(KERN_INFO "%s: the destination buffer is at %px; getting %lu bytes of block %d\n", MODNAME, destination, size, offset);
 
 
@@ -262,7 +261,6 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
    }
 
    // signal the presence of reader - avoid that a writer reuses this block while i'm reading
-	// my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
    AUDIT printk(KERN_INFO "%s: old ctr: %ld\n", MODNAME, (rcu.epoch) & (~MASK));
    my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
    AUDIT printk(KERN_INFO "%s: new ctr: %ld\n", MODNAME, (rcu.epoch) & (~MASK));
@@ -302,7 +300,7 @@ get_exit:
 
    // the first bit in my_epoch is the index where we must release the counter
    index = (my_epoch & MASK) ? 1 : 0;           
-	// __sync_fetch_and_add(&(rcu.pending[index]),1);
+   
    AUDIT printk(KERN_INFO "%s: reset ctr index %d (before): %ld\n", MODNAME, index, rcu.pending[index]);
    __sync_fetch_and_add(&(rcu.pending[index]),1);
    AUDIT printk(KERN_INFO "%s: reset ctr index %d (after): %ld\n", MODNAME, index, rcu.pending[index]);
