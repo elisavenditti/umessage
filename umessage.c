@@ -27,8 +27,7 @@
 #include "umessage_filesystem/umessagefs_src.c"
 
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Elisa Venditti <elisavenditti99@gmail.com>");
+
 MODULE_DESCRIPTION("user message block level mantainance");
 
 
