@@ -1,6 +1,6 @@
 # INIZIALIZZAZIONE DEL SERVIZIO DI MESSAGGISTICA
 
-> Per eseguire correttamente il servizio di messagistica, bisogna inserire il modulo the_usctm.ko (sudo insmod the_usctm.ko): è necessario per la ricerca della syscall table.
+> Il modulo per il kernel Linux è stato sviluppato sulla versione 5.19.0-35-generic. Per eseguire correttamente il servizio di messagistica, bisogna inserire il modulo the_usctm.ko (sudo insmod the_usctm.ko): è necessario per la ricerca della syscall table.
 
 ## Prima di compilare
 Bisogna configurare i seguenti parametri:
