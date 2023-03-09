@@ -262,16 +262,18 @@ asmlinkage int sys_get_data(int offset, char* destination, size_t size){
    }
 
    // signal the presence of reader - avoid that a writer reuses this block while i'm reading
-	my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
+	// my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
+   AUDIT printk(KERN_INFO "%s: old ctr: %ld\n", MODNAME, (rcu.epoch) & (~MASK));
+   my_epoch = __sync_fetch_and_add(&(rcu.epoch),1);
+   AUDIT printk(KERN_INFO "%s: new ctr: %ld\n", MODNAME, (rcu.epoch) & (~MASK));
 
    // get metadata of the block   
    selected_block = &block_metadata[offset];
 
    if(get_validity(selected_block->val_next) == 0){
       printk("%s: the block requested is not valid", MODNAME);
-      __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
-      wake_up_interruptible(&umount_queue);
-      return -ENODATA;
+      return_val = -ENODATA;
+      goto get_exit;
    }
 
 
@@ -300,7 +302,11 @@ get_exit:
 
    // the first bit in my_epoch is the index where we must release the counter
    index = (my_epoch & MASK) ? 1 : 0;           
-	__sync_fetch_and_add(&(rcu.pending[index]),1);
+	// __sync_fetch_and_add(&(rcu.pending[index]),1);
+   AUDIT printk(KERN_INFO "%s: reset ctr index %d (before): %ld\n", MODNAME, index, rcu.pending[index]);
+   __sync_fetch_and_add(&(rcu.pending[index]),1);
+   AUDIT printk(KERN_INFO "%s: reset ctr index %d (after): %ld\n", MODNAME, index, rcu.pending[index]);
+   
    __sync_fetch_and_sub(&(bdev_md.bdev_usage),1);
    wake_up_interruptible(&wqueue);
    wake_up_interruptible(&umount_queue);
@@ -366,6 +372,7 @@ asmlinkage int sys_invalidate_data(int offset){
    while(get_pointer(selected->val_next) != change_validity(NULL)){
       
       selected = get_pointer(selected->val_next);
+      printk("%s: [block %d] val_next=%px\n", MODNAME, selected->num, selected->val_next);
       if(selected->num == offset){
          printk("%s: found block to invalidate\n", MODNAME);
          break;   

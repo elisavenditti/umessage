@@ -77,7 +77,7 @@ redo:
         wait_event_interruptible(wqueue, rcu.pending[index] >= grace_period_threads);
         rcu.pending[index] = 0;
 	mutex_unlock(&(rcu.lock));
-
+        AUDIT printk(KERN_INFO "%s: HOUSE KEEPING (stop waiting %lu readers on index = %d)\n", MODNAME, grace_period_threads, index);
 	goto redo;
 	return 0;
 }
